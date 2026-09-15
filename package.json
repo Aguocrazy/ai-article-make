@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "axios": "^1.20.0"
+  },
+  "devDependencies": {
+    "@umijs/openapi": "^1.14.1",
+    "tslib": "^2.8.1"
+  }
+}
