@@ -4,7 +4,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/ai_passage_creator
     username: root
-    password: 123456
+    password: qwer1234567
   # session 配置
   session:
     store-type: redis
