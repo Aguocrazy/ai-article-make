@@ -37,10 +37,39 @@ src/main/java/com/aiarticle/
 ├── config/                      # 配置类
 │   ├── CorsConfig.java          # 跨域配置
 │   └── Knife4jConfig.java       # 接口文档配置
+├── constant/                    # 常量
+│   └── UserConstant.java        # 用户角色常量
+├── mapper/                      # 数据访问层（MyBatis-Flex BaseMapper）
+│   └── UserMapper.java
+├── model/
+│   ├── dto/user/                # 请求 DTO（Register/Login/Add/Update/Query）
+│   ├── entity/                  # 数据库实体（User，雪花 ID + 逻辑删除）
+│   └── vo/                      # 视图对象（LoginUserVO / UserVO，脱敏）
+├── service/                     # 业务逻辑
+│   ├── UserService.java
+│   └── impl/UserServiceImpl.java
 └── controller/                  # 控制器
+    ├── UserController.java      # 用户模块（注册/登录/注销/管理）
     ├── TestController.java      # 测试接口
     └── DocController.java       # 文档入口（/api/doc.html 重定向）
 ```
+
+## 用户模块接口
+
+| 接口 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| 用户注册 | POST | /user/register | 账号密码注册 |
+| 用户登录 | POST | /user/login | Session 认证 |
+| 获取登录用户 | GET | /user/get/login | 获取当前用户信息 |
+| 用户注销 | POST | /user/logout | 退出登录 |
+| 创建用户 | POST | /user/add | 管理员专用 |
+| 删除用户 | POST | /user/delete | 管理员专用（逻辑删除） |
+| 更新用户 | POST | /user/update | 管理员专用 |
+| 分页查询用户 | POST | /user/list/page/vo | 管理员专用 |
+
+- 密码加密：`md5(密码 + 盐值 yupi)`
+- 登录态：Session（Spring Session 存 Redis，30 天）
+- 数据库变更历史见 `sql/CHANGELOG.md`
 
 ## 核心设计
 

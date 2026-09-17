@@ -44,10 +44,13 @@ public class User implements Serializable {
 
     private String userRole;
 
+    @Column(onInsertValue = "now()")
     private LocalDateTime editTime;
 
+    @Column(onInsertValue = "now()")
     private LocalDateTime createTime;
 
+    @Column(onInsertValue = "now()", onUpdateValue = "now()")
     private LocalDateTime updateTime;
 
     /**
