@@ -4,8 +4,8 @@ import cn.hutool.core.bean.BeanUtil;
 import com.aiarticle.common.BaseResponse;
 import com.aiarticle.common.DeleteRequest;
 import com.aiarticle.common.ResultUtils;
+import com.aiarticle.annotation.AuthCheck;
 import com.aiarticle.constant.UserConstant;
-import com.aiarticle.exception.BusinessException;
 import com.aiarticle.exception.ErrorCode;
 import com.aiarticle.exception.ThrowUtils;
 import com.aiarticle.model.dto.user.UserAddRequest;
@@ -90,11 +90,10 @@ public class UserController {
     /**
      * 创建用户（管理员专用）
      */
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     @Operation(summary = "创建用户", description = "管理员专用")
     @PostMapping("/add")
-    public BaseResponse<Long> addUser(@RequestBody UserAddRequest userAddRequest, HttpServletRequest request) {
-        // 仅管理员可操作
-        checkAdmin(request);
+    public BaseResponse<Long> addUser(@RequestBody UserAddRequest userAddRequest) {
         ThrowUtils.throwIf(userAddRequest == null, ErrorCode.PARAMS_ERROR);
         long userId = userService.addUser(userAddRequest);
         return ResultUtils.success(userId);
@@ -103,10 +102,10 @@ public class UserController {
     /**
      * 删除用户（管理员专用）
      */
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     @Operation(summary = "删除用户", description = "管理员专用")
     @PostMapping("/delete")
-    public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
-        checkAdmin(request);
+    public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest) {
         ThrowUtils.throwIf(deleteRequest == null || deleteRequest.getId() == null, ErrorCode.PARAMS_ERROR, "id 为空");
         boolean removed = userService.removeById(deleteRequest.getId());
         return ResultUtils.success(removed);
@@ -115,10 +114,10 @@ public class UserController {
     /**
      * 更新用户（管理员专用）
      */
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     @Operation(summary = "更新用户", description = "管理员专用")
     @PostMapping("/update")
-    public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest, HttpServletRequest request) {
-        checkAdmin(request);
+    public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest) {
         ThrowUtils.throwIf(userUpdateRequest == null || userUpdateRequest.getId() == null, ErrorCode.PARAMS_ERROR, "id 为空");
         User user = new User();
         BeanUtil.copyProperties(userUpdateRequest, user);
@@ -129,10 +128,10 @@ public class UserController {
     /**
      * 分页查询用户（管理员专用）
      */
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     @Operation(summary = "分页查询用户", description = "管理员专用")
     @PostMapping("/list/page/vo")
-    public BaseResponse<Page<UserVO>> listUserVOByPage(@RequestBody UserQueryRequest userQueryRequest, HttpServletRequest request) {
-        checkAdmin(request);
+    public BaseResponse<Page<UserVO>> listUserVOByPage(@RequestBody UserQueryRequest userQueryRequest) {
         ThrowUtils.throwIf(userQueryRequest == null, ErrorCode.PARAMS_ERROR);
         long current = userQueryRequest.getCurrent();
         long pageSize = userQueryRequest.getPageSize();
@@ -142,12 +141,4 @@ public class UserController {
     }
 
     // endregion
-
-    /**
-     * 校验当前登录用户是否为管理员
-     */
-    private void checkAdmin(HttpServletRequest request) {
-        User loginUser = userService.getLoginUser(request);
-        ThrowUtils.throwIf(!UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole()), ErrorCode.NO_AUTH_ERROR, "仅管理员可操作");
-    }
 }
