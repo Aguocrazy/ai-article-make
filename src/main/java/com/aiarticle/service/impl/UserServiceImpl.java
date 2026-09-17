@@ -1,7 +1,7 @@
 package com.aiarticle.service.impl;
 
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.crypto.digest.DigestUtil;
 import com.aiarticle.constant.UserConstant;
 import com.aiarticle.exception.BusinessException;
 import com.aiarticle.exception.ErrorCode;
@@ -19,6 +19,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.BeanUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -35,9 +36,14 @@ import static com.aiarticle.model.entity.table.UserTableDef.USER;
 public class UserServiceImpl implements UserService {
 
     /**
-     * 密码加密盐值
+     * 应用级固定盐（pepper），不入库；与每人一盐叠加，避免通用彩虹表直接命中
      */
-    private static final String SALT = "yupi";
+    private static final String PEPPER = "guoshao";
+
+    private static final int ACCOUNT_MIN_LEN = 4;
+    private static final int ACCOUNT_MAX_LEN = 256;
+    private static final int PASSWORD_MIN_LEN = 8;
+    private static final int PASSWORD_MAX_LEN = 512;
 
     /**
      * Session 中登录用户的 key
@@ -53,28 +59,29 @@ public class UserServiceImpl implements UserService {
         String userPassword = userRegisterRequest.getUserPassword();
         String checkPassword = userRegisterRequest.getCheckPassword();
 
-        // 1. 参数校验
+        // 1. 参数校验（账号 / 密码长度）
         if (StrUtil.hasBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号过短");
+        if (userAccount.length() < ACCOUNT_MIN_LEN || userAccount.length() > ACCOUNT_MAX_LEN) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号长度必须在 4 到 256 位之间");
         }
-        if (userPassword.length() < 8 || checkPassword.length() < 8) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码过短");
+        if (userPassword.length() < PASSWORD_MIN_LEN || userPassword.length() > PASSWORD_MAX_LEN
+                || checkPassword.length() < PASSWORD_MIN_LEN || checkPassword.length() > PASSWORD_MAX_LEN) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度必须在 8 到 512 位之间");
         }
         if (!userPassword.equals(checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的密码不一致");
         }
 
-        // 2. 账号不能重复（查库校验 + 数据库唯一索引双重保障）
+        // 2. 查重：先查库；并发下仍可能撞车，插入时靠 uk_userAccount 兜底
         long count = userMapper.selectCountByQuery(QueryWrapper.create().where(USER.USER_ACCOUNT.eq(userAccount)));
         if (count > 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号已存在");
         }
 
-        // 3. 加密密码（MD5 + 盐值）
-        String encryptPassword = encryptPassword(userPassword);
+        // 3. 加密：每人随机盐 + 应用 pepper，摘要格式 盐$MD5(明文+盐+pepper)
+        String encryptPassword = encodePassword(userPassword);
 
         // 4. 插入数据
         User user = User.builder()
@@ -83,9 +90,13 @@ public class UserServiceImpl implements UserService {
                 .userName(userAccount)
                 .userRole(UserConstant.DEFAULT_ROLE)
                 .build();
-        boolean saved = userMapper.insert(user) > 0;
-        if (!saved) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
+        try {
+            boolean saved = userMapper.insert(user) > 0;
+            if (!saved) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
+            }
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号已存在");
         }
         return user.getId();
     }
@@ -99,19 +110,17 @@ public class UserServiceImpl implements UserService {
         if (StrUtil.hasBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
+        if (userAccount.length() < ACCOUNT_MIN_LEN || userAccount.length() > ACCOUNT_MAX_LEN) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号错误");
         }
-        if (userPassword.length() < 8) {
+        if (userPassword.length() < PASSWORD_MIN_LEN || userPassword.length() > PASSWORD_MAX_LEN) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码错误");
         }
 
-        // 2. 加密后比对
-        String encryptPassword = encryptPassword(userPassword);
+        // 2. 按账号查出用户后用对应盐校验（不能把摘要直接放进 WHERE，每人一盐）
         User user = userMapper.selectOneByQuery(QueryWrapper.create()
-                .where(USER.USER_ACCOUNT.eq(userAccount))
-                .and(USER.USER_PASSWORD.eq(encryptPassword)));
-        if (user == null) {
+                .where(USER.USER_ACCOUNT.eq(userAccount)));
+        if (user == null || !matchesPassword(userPassword, user.getUserPassword())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号或密码错误");
         }
 
@@ -161,21 +170,24 @@ public class UserServiceImpl implements UserService {
         if (StrUtil.hasBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号或密码为空");
         }
-        if (userAccount.length() < 4) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号过短");
+        if (userAccount.length() < ACCOUNT_MIN_LEN || userAccount.length() > ACCOUNT_MAX_LEN) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号长度必须在 4 到 256 位之间");
         }
-        if (userPassword.length() < 8) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码过短");
+        if (userPassword.length() < PASSWORD_MIN_LEN || userPassword.length() > PASSWORD_MAX_LEN) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度必须在 8 到 512 位之间");
         }
-        // 默认密码加密
-        String encryptPassword = encryptPassword(userPassword);
+        String encryptPassword = encodePassword(userPassword);
 
         User user = new User();
         BeanUtils.copyProperties(userAddRequest, user);
         user.setUserPassword(encryptPassword);
-        boolean saved = userMapper.insert(user) > 0;
-        if (!saved) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "创建用户失败");
+        try {
+            boolean saved = userMapper.insert(user) > 0;
+            if (!saved) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "创建用户失败");
+            }
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号已存在");
         }
         return user.getId();
     }
@@ -251,10 +263,30 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 密码加密（MD5 + 盐值）
+     * 新密码：随机盐 + 摘要，存为 {@code salt$hash}
      */
-    private String encryptPassword(String userPassword) {
-        // 密码在前、盐在后进行 MD5 加密（与种子数据一致）
-        return DigestUtils.md5DigestAsHex((userPassword + SALT).getBytes(StandardCharsets.UTF_8));
+    private String encodePassword(String rawPassword) {
+        String salt = IdUtil.fastSimpleUUID();
+        return salt + "$" + digest(rawPassword, salt);
+    }
+
+    /**
+     * 校验明文。含 {@code $} 的走每人一盐；否则兼容种子数据 MD5(明文 + pepper)。
+     */
+    private boolean matchesPassword(String rawPassword, String stored) {
+        if (StrUtil.isBlank(stored)) {
+            return false;
+        }
+        int sep = stored.indexOf('$');
+        if (sep > 0) {
+            String salt = stored.substring(0, sep);
+            String hash = stored.substring(sep + 1);
+            return digest(rawPassword, salt).equals(hash);
+        }
+        return DigestUtils.md5DigestAsHex((rawPassword + PEPPER).getBytes(StandardCharsets.UTF_8)).equals(stored);
+    }
+
+    private String digest(String rawPassword, String salt) {
+        return DigestUtils.md5DigestAsHex((rawPassword + salt + PEPPER).getBytes(StandardCharsets.UTF_8));
     }
 }

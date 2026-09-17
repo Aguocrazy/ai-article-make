@@ -144,7 +144,7 @@ Vite 把以 `/api` 开头的请求代理到 `http://localhost:8080`。前端 axi
 | 更新用户 | POST | `/user/update` | 管理员 |
 | 分页查询 | POST | `/user/list/page/vo` | 管理员（`pageSize` 最大 50） |
 
-注册规则：账号至少 4 位，密码至少 8 位，需填写 `checkPassword` 且两次一致。密码存储为 `MD5(明文 + 盐 yupi)`。登录态写入 Session，Spring Session 存 Redis，Cookie / Session 超时均为 30 天。管理员接口在 Controller 内校验 `userRole == admin`。
+注册规则：账号 4～256 位，密码 8～512 位，需填写 `checkPassword` 且两次一致。查重先查库，插入时捕获 `uk_userAccount` 唯一索引冲突作为兜底。新密码存为 `随机盐$MD5(明文+盐+pepper)`，每人一盐以防彩虹表；种子账号仍兼容旧格式 `MD5(明文+yupi)`。登录态写入 Session，Spring Session 存 Redis，Cookie / Session 超时均为 30 天。管理员接口在 Controller 内校验 `userRole == admin`。
 
 其它示例接口：`GET /api/test/hello`、`GET /api/test/user/{id}`（演示 Knife4j 与 Hutool，不走统一 `BaseResponse`）。
 
