@@ -1,42 +1,25 @@
-# fronted
+# 前端（fronted）
 
-This template should help get you started developing with Vue 3 in Vite.
+AI Article Make 的 Vue 3 客户端，目录名与仓库保持一致。完整架构、后端启动与接口说明见仓库根目录 [README.md](../README.md)。
 
-## Recommended IDE Setup
+## 技术
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+Vue 3 + Vite 8 + TypeScript + Axios。HTTP 封装在 `src/request.ts`：`baseURL` 为 `/api`，携带 Cookie，按后端 `BaseResponse`（`code === 0` 为成功）解包。
 
-## Recommended Browser Setup
+## 本地开发
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+需要先启动后端（`http://localhost:8080`）。
 
 ```sh
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
+Vite 将 `/api` 代理到后端。当前脚手架页面仍是模板内容，登录与业务 UI 尚未接入。
 
 ```sh
-npm run build
+npm run build    # 类型检查 + 生产构建
+npm run preview  # 预览构建结果
 ```
+
+推荐使用 VS Code + Vue (Official) 扩展（不要同时开 Vetur）。

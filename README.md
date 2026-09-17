@@ -1,81 +1,156 @@
 # AI Article Make
 
-AI 文章生成平台后端服务。
+面向「AI 写文章」场景的全栈项目：后端提供用户体系与 OpenAPI 文档，前端用 Vue 3 对接同一套接口约定。当前已完成账号注册 / 登录 / 管理能力，文章生成业务尚未接入。
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| 后端 | `src/` | Spring Boot 3 + MyBatis-Flex，默认端口 `8080` |
+| 前端 | `fronted/` | Vue 3 + Vite + TypeScript，开发端口由 Vite 分配 |
+| 数据库脚本 | `sql/` | 建库建表与变更记录 |
 
 ## 技术栈
+
+### 后端
 
 | 技术 | 版本 | 说明 |
 |------|------|------|
 | Java | 21 | 运行环境 |
-| Spring Boot | 3.5.10 | 基础框架 |
-| MyBatis-Flex | 1.11.1 | ORM 框架（spring-boot3-starter） |
-| MySQL | 8.0.x | 数据库（ai_passage_creator） |
-| HikariCP | 4.0.3 | 数据库连接池 |
-| Redis | — | 缓存 / Session 存储 |
-| Spring Session | — | 分布式 Session（Redis 存储，30 天） |
-| Spring AOP | — | 面向切面编程 |
-| Lombok | — | 简化样板代码 |
-| Hutool | 5.8.32 | Java 工具库 |
-| Knife4j | 4.5.0 | 接口文档（基于 springdoc-openapi，中文界面） |
-| Maven Wrapper | 3.9.9 | 构建工具（无需本地安装 Maven） |
+| Spring Boot | 3.5.10 | Web / AOP / Redis / Session |
+| MyBatis-Flex | 1.11.1 | ORM（`spring-boot3-starter`） |
+| MySQL | 8.0+ | 库名 `ai_passage_creator` |
+| HikariCP | 4.0.3 | 连接池 |
+| Redis | — | 缓存与 Session 存储 |
+| Spring Session | — | Session 存 Redis，有效期 30 天 |
+| Hutool | 5.8.32 | 工具库 |
+| Knife4j | 4.5.0 | 中文 OpenAPI 文档（springdoc） |
+| Maven Wrapper | 3.9.9 | 无需本机安装 Maven |
 
-## 项目结构
+### 前端
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Vue | 3.5 | UI 框架 |
+| Vite | 8 | 构建与开发代理 |
+| TypeScript | 6 | 类型检查 |
+| Axios | 1.20 | HTTP 客户端（`fronted/src/request.ts`） |
+
+仓库根目录另有 `@umijs/openapi`，用于按 OpenAPI 生成 TypeScript 请求代码（需自行配置 `openapi2ts`）。
+
+## 仓库结构
 
 ```
-src/main/java/com/aiarticle/
-├── AiArticleMakeApplication.java   # 启动类（@EnableAspectJAutoProxy 启用 AOP）
-├── common/                      # 通用类
-│   ├── BaseResponse.java        # 通用响应类
-│   ├── DeleteRequest.java       # 删除请求
-│   ├── PageRequest.java         # 分页请求
-│   └── ResultUtils.java         # 响应工具类
-├── exception/                   # 异常处理
-│   ├── BusinessException.java   # 业务异常
-│   ├── ErrorCode.java           # 错误码枚举
-│   ├── GlobalExceptionHandler.java  # 全局异常处理器
-│   └── ThrowUtils.java          # 异常工具类
-├── config/                      # 配置类
-│   ├── CorsConfig.java          # 跨域配置
-│   └── Knife4jConfig.java       # 接口文档配置
-├── constant/                    # 常量
-│   └── UserConstant.java        # 用户角色常量
-├── mapper/                      # 数据访问层（MyBatis-Flex BaseMapper）
-│   └── UserMapper.java
-├── model/
-│   ├── dto/user/                # 请求 DTO（Register/Login/Add/Update/Query）
-│   ├── entity/                  # 数据库实体（User，雪花 ID + 逻辑删除）
-│   └── vo/                      # 视图对象（LoginUserVO / UserVO，脱敏）
-├── service/                     # 业务逻辑
-│   ├── UserService.java
-│   └── impl/UserServiceImpl.java
-└── controller/                  # 控制器
-    ├── UserController.java      # 用户模块（注册/登录/注销/管理）
-    ├── TestController.java      # 测试接口
-    └── DocController.java       # 文档入口（/api/doc.html 重定向）
+ai-article-make/
+├── src/main/java/com/aiarticle/
+│   ├── AiArticleMakeApplication.java
+│   ├── common/          # BaseResponse、分页 / 删除请求、ResultUtils
+│   ├── config/          # 跨域、Knife4j
+│   ├── constant/        # 用户角色常量
+│   ├── controller/      # User / Test / Doc
+│   ├── exception/       # 业务异常、错误码、全局处理
+│   ├── mapper/
+│   ├── model/           # dto / entity / vo
+│   └── service/
+├── src/main/resources/
+│   ├── application.yml          # 数据源、Redis、Session、Knife4j
+│   └── application.properties   # 端口 8080、日志级别
+├── sql/
+│   ├── init_user.sql
+│   └── CHANGELOG.md
+├── fronted/             # Vue 前端（目录名即为仓库实际路径）
+└── pom.xml
 ```
 
-## 用户模块接口
+后端分层：
 
-| 接口 | 方法 | 路径 | 说明 |
+```
+controller → service → mapper（MyBatis-Flex BaseMapper）
+model/dto 请求  → entity 表映射  → vo 脱敏返回
+```
+
+## 环境要求
+
+- JDK 21
+- MySQL 8.0+
+- Redis（本机默认 `localhost:6379`，无密码）
+- Node.js `^22.18.0` 或 `>=24.12.0`（仅跑前端时需要）
+
+## 快速开始
+
+### 1. 初始化数据库
+
+在 MySQL 中执行：
+
+```bash
+mysql -u root -p < sql/init_user.sql
+```
+
+脚本会创建库 `ai_passage_creator`、表 `user`，并插入测试账号。变更履历见 [`sql/CHANGELOG.md`](sql/CHANGELOG.md)。
+
+预置账号（明文密码均为 `12345678`）：
+
+| 账号 | 角色 |
+|------|------|
+| `admin` | 管理员 |
+| `user` | 普通用户 |
+| `test` | 普通用户 |
+
+### 2. 配置后端
+
+编辑 `src/main/resources/application.yml` 中的 MySQL 账号密码；Redis 默认本机即可。不要把真实密码提交进仓库。
+
+应用通过实体 `User` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名，MyBatis-Flex 关闭了下划线转驼峰（`map-underscore-to-camel-case: false`）。
+
+### 3. 启动后端
+
+```bash
+./mvnw spring-boot:run
+# 或
+./mvnw clean package -DskipTests
+java -jar target/ai-article-make-0.0.1-SNAPSHOT.jar
+```
+
+服务地址：`http://localhost:8080`（无 `context-path`）。
+
+### 4. 启动前端
+
+```bash
+cd fronted
+npm install
+npm run dev
+```
+
+Vite 把以 `/api` 开头的请求代理到 `http://localhost:8080`。前端 axios 的 `baseURL` 为 `/api` 且 `withCredentials: true`，与后端 CORS（允许 Cookie、`allowedOriginPatterns: *`）配合使用。
+
+注意：用户接口实际路径是 `/user/...`，不是 `/api/user/...`。调试用户模块可直接打后端，或把代理 rewrite / `baseURL` 按实际路径调整。测试接口本身挂在 `/api/test` 下，可走当前代理。
+
+## 接口文档
+
+启动后端后：
+
+- Knife4j：http://localhost:8080/doc.html
+- 带 `/api` 前缀的入口（重定向到上面）：http://localhost:8080/api/doc.html
+- OpenAPI JSON：http://localhost:8080/v3/api-docs/default
+
+## 用户模块
+
+| 说明 | 方法 | 路径 | 权限 |
 |------|------|------|------|
-| 用户注册 | POST | /user/register | 账号密码注册 |
-| 用户登录 | POST | /user/login | Session 认证 |
-| 获取登录用户 | GET | /user/get/login | 获取当前用户信息 |
-| 用户注销 | POST | /user/logout | 退出登录 |
-| 创建用户 | POST | /user/add | 管理员专用 |
-| 删除用户 | POST | /user/delete | 管理员专用（逻辑删除） |
-| 更新用户 | POST | /user/update | 管理员专用 |
-| 分页查询用户 | POST | /user/list/page/vo | 管理员专用 |
+| 注册 | POST | `/user/register` | 公开 |
+| 登录 | POST | `/user/login` | 公开 |
+| 当前用户 | GET | `/user/get/login` | 登录 |
+| 注销 | POST | `/user/logout` | 登录 |
+| 创建用户 | POST | `/user/add` | 管理员 |
+| 删除用户 | POST | `/user/delete` | 管理员（逻辑删除） |
+| 更新用户 | POST | `/user/update` | 管理员 |
+| 分页查询 | POST | `/user/list/page/vo` | 管理员（`pageSize` 最大 50） |
 
-- 密码加密：`md5(密码 + 盐值 yupi)`
-- 登录态：Session（Spring Session 存 Redis，30 天）
-- 数据库变更历史见 `sql/CHANGELOG.md`
+注册规则：账号至少 4 位，密码至少 8 位，需填写 `checkPassword` 且两次一致。密码存储为 `MD5(明文 + 盐 yupi)`。登录态写入 Session，Spring Session 存 Redis，Cookie / Session 超时均为 30 天。管理员接口在 Controller 内校验 `userRole == admin`。
 
-## 核心设计
+其它示例接口：`GET /api/test/hello`、`GET /api/test/user/{id}`（演示 Knife4j 与 Hutool，不走统一 `BaseResponse`）。
 
-### 统一响应格式
+## 统一响应与错误码
 
-所有接口统一返回 `BaseResponse<T>`：
+业务接口返回 `BaseResponse<T>`：
 
 ```json
 {
@@ -85,7 +160,7 @@ src/main/java/com/aiarticle/
 }
 ```
 
-| code | 说明 |
+| code | 含义 |
 |------|------|
 | 0 | 成功 |
 | 40000 | 请求参数错误 |
@@ -97,49 +172,18 @@ src/main/java/com/aiarticle/
 | 50000 | 系统内部异常 |
 | 50001 | 操作失败 |
 
-### 使用示例
+`BusinessException` 与未捕获 `RuntimeException` 由 `GlobalExceptionHandler` 转成上述结构。Controller 侧常用：
 
 ```java
-// Controller 返回成功响应
-@GetMapping("/user")
-public BaseResponse<User> getUser() {
-    return ResultUtils.success(user);
-}
-
-// 业务校验：条件成立自动抛出业务异常，由全局异常处理器兜底
-ThrowUtils.throwIf(user == null, ErrorCode.NOT_FOUND_ERROR, "用户不存在");
-
-// 主动抛出业务异常
-throw new BusinessException(ErrorCode.OPERATION_ERROR, "自定义错误信息");
+return ResultUtils.success(data);
+ThrowUtils.throwIf(condition, ErrorCode.PARAMS_ERROR, "说明");
+throw new BusinessException(ErrorCode.OPERATION_ERROR, "说明");
 ```
 
-## 环境要求
+分页请求基类 `PageRequest`：`current` 从 1 起，默认 `pageSize = 10`，`sortOrder` 为 `ascend` / `descend`。
 
-- JDK 21
-- MySQL 8.0+（数据库 `ai_passage_creator`）
-- Redis
+## 当前范围与后续
 
-## 快速开始
+已具备：用户表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 请求封装。
 
-```bash
-# 1. 配置数据库与 Redis（src/main/resources/application.yml）
-#    spring.datasource.url / username / password
-#    spring.data.redis.host / port
-
-# 2. 编译
-./mvnw clean compile
-
-# 3. 启动
-./mvnw spring-boot:run
-# 或打包运行
-./mvnw clean package -DskipTests
-java -jar target/ai-article-make-0.0.1-SNAPSHOT.jar
-```
-
-## 接口文档
-
-启动后访问：
-
-- **Knife4j 文档**：http://localhost:8080/doc.html
-- **文档入口（/api 前缀）**：http://localhost:8080/api/doc.html
-- **OpenAPI JSON**：http://localhost:8080/v3/api-docs/default
+尚未实现：文章生成、模型调用、前端登录页与业务页面。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
