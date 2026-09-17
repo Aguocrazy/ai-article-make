@@ -14,9 +14,9 @@ export interface BaseResponse<T = unknown> {
  * 创建 axios 实例
  */
 const request: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: '',
   timeout: 10000,
-  // 关键：跨域请求携带 cookie（配合后端 CorsConfig 的 allowCredentials）
+  // 同源走 Vite 代理；仍携带 cookie 以便 Session 登录态回传
   withCredentials: true,
 })
 
@@ -34,8 +34,10 @@ request.interceptors.response.use(
     if (res.code === 0) {
       return response
     }
-    // 业务错误，统一提示
-    console.error(`请求失败: ${res.message} (code=${res.code})`)
+    // 未登录是探测登录态的正常结果，不当成控制台错误
+    if (res.code !== 40100) {
+      console.error(`请求失败: ${res.message} (code=${res.code})`)
+    }
     return Promise.reject(new Error(res.message || '请求失败'))
   },
   (error) => {

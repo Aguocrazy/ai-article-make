@@ -17,7 +17,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // 将 /api 开头的请求转发到后端 Spring Boot
+      // 用户接口挂在 /user，测试与文档挂在 /api
+      '/user': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,

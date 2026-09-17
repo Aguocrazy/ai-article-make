@@ -119,9 +119,7 @@ npm install
 npm run dev
 ```
 
-Vite 把以 `/api` 开头的请求代理到 `http://localhost:8080`。前端 axios 的 `baseURL` 为 `/api` 且 `withCredentials: true`，与后端 CORS（允许 Cookie、`allowedOriginPatterns: *`）配合使用。
-
-注意：用户接口实际路径是 `/user/...`，不是 `/api/user/...`。调试用户模块可直接打后端，或把代理 rewrite / `baseURL` 按实际路径调整。测试接口本身挂在 `/api/test` 下，可走当前代理。
+Vite 把 `/user`、`/api` 代理到 `http://localhost:8080`。浏览器访问 Vite 开发地址即可：登录页 `/login`，注册页 `/register`，登录后进入工作台 `/`。axios 携带 Cookie，与后端 Session 对齐。
 
 ## 接口文档
 
