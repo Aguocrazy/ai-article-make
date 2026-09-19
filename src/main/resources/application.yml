@@ -1,4 +1,7 @@
 spring:
+  # DashScope Key 用占位符，取值见 config/secrets.properties（不入库）
+  config:
+    import: optional:file:./config/secrets.properties
   # MySQL 数据库配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -17,6 +20,10 @@ spring:
       port: 6379
       database: 0
       password:
+  # 通义千问（DashScope）
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:your-api-key-here}
 
 server:
   servlet:

@@ -17,6 +17,13 @@ out/
 ### Mac ###
 .DS_Store
 
+### 本地密钥（勿提交） ###
+config/secrets.properties
+config/dashscope.yml
+**/application-local.yml
+.env
+.env.local
+
 ### Compiled Class files ###
 *.class
 

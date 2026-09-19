@@ -96,7 +96,7 @@ mysql -u root -p < sql/init_user.sql
 
 ### 2. 配置后端
 
-编辑 `src/main/resources/application.yml` 中的 MySQL 账号密码；Redis 默认本机即可。不要把真实密码提交进仓库。
+MySQL 账号密码写在 `src/main/resources/application.yml`。通义千问 Key 用占位符 `${DASHSCOPE_API_KEY}`，取值在 **`config/secrets.properties`**（已 gitignore，不要提交）。把 `DASHSCOPE_API_KEY=` 后面改成你的 Key，或 `export DASHSCOPE_API_KEY=你的Key`。Redis 默认本机、无密码。
 
 应用通过实体 `User` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名，MyBatis-Flex 关闭了下划线转驼峰（`map-underscore-to-camel-case: false`）。
 
@@ -180,8 +180,74 @@ throw new BusinessException(ErrorCode.OPERATION_ERROR, "说明");
 
 分页请求基类 `PageRequest`：`current` 从 1 起，默认 `pageSize = 10`，`sortOrder` 为 `ascend` / `descend`。
 
+## 文章生成架构（后续）
+
+生成链路按「先拿任务号、后台慢慢跑、结果用 SSE 往前推」来设计，避免一次 HTTP 请求卡到整篇文章写完。
+
+```mermaid
+flowchart TB
+  FE((前端))
+
+  subgraph iface["1. 接口层 Interface Layer"]
+    direction LR
+    Create["POST /create<br/>提交选题"]
+    TaskId["返回 taskId 给前端"]
+    Create --> TaskId
+  end
+
+  subgraph worker["2. 异步执行层 Async Worker"]
+    direction LR
+    Start(["启动链路"])
+    A1["智能体1<br/>标题"]
+    A2["智能体2<br/>大纲"]
+    A3["智能体3<br/>正文"]
+    A4["智能体4<br/>分析图"]
+    A5["智能体5<br/>生图"]
+    Save[("合成落库")]
+    Start --> A1 --> A2 --> A3 --> A4 --> A5 --> Save
+  end
+
+  subgraph push["3. 推送层 SSE Push"]
+    Channel["SSE 实时数据流通道（Topic: taskId）"]
+    Done(["完成 / 关闭"])
+    Channel --> Done
+  end
+
+  FE -->|"提交选题"| Create
+  TaskId -->|"taskId"| FE
+  Create -->|"触发"| Start
+  FE -->|"按 taskId 监听"| Channel
+  A1 -.->|"标题"| Channel
+  A2 -.->|"流式"| Channel
+  A3 -.->|"流式"| Channel
+  A5 -.->|"图片"| Channel
+  Save --> Done
+```
+
+流程简述：
+
+1. 前端 `POST /create` 只提交选题，接口马上返回 `taskId`，请求结束。
+2. 后台 Worker 被触发后串行跑 5 个智能体：标题 → 大纲 → 正文 → 分析图 → 配图，最后合成落库。
+3. 前端用同一个 `taskId` 挂上 SSE；标题、流式正文、图片等到一段就往这个通道推一段，全部完成后关闭连接。
+
+### 什么是 SSE
+
+**SSE（Server-Sent Events，服务端推送事件）** 是浏览器原生支持的一种单向实时通道：客户端用 HTTP 连上服务端之后，连接保持打开，服务端可以按事件一块块往下写数据，客户端用 `EventSource` 收。
+
+和普通接口、WebSocket 的差别：
+
+| | 普通 HTTP | SSE | WebSocket |
+|--|-----------|-----|-----------|
+| 方向 | 请求一次、响应一次就结束 | 主要是服务端 → 浏览器 | 双方都能随时发 |
+| 连接 | 短连接 | 长连接（文本事件流） | 长连接（双工） |
+| 典型用途 | 登录、查用户 | 生成进度、流式正文 | 聊天室、协同编辑 |
+
+本项目用 SSE 而不是把整篇文章塞进一次响应，是因为大纲和正文是流式出来的：智能体边写，前端边渲染。通道按 `taskId` 区分，多个生成任务互不串台。浏览器刷新或离开页面后应关闭监听；服务端在「合成落库」结束后发送完成事件并断开。
+
+当前仓库尚未实现 `/create` 与 SSE 通道，上图是后续接入模型时的目标结构。
+
 ## 当前范围与后续
 
-已具备：用户表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 请求封装。
+已具备：用户表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台。
 
-尚未实现：文章生成、模型调用、前端登录页与业务页面。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
+尚未实现：上图中的异步生成链路、模型调用、SSE 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
