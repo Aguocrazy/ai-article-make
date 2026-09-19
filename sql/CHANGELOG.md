@@ -4,12 +4,42 @@
 
 | 序号 | 日期 | 脚本文件 | 说明 | 状态 |
 |------|------|----------|------|------|
+| 3 | 2026-09-19 | [003_create_article.sql](003_create_article.sql) | 创建 `article` 文章表（任务 ID、选题、正文、配图、生成状态） | ✅ 已执行 |
 | 2 | 2026-09-16 | [init_user.sql](init_user.sql) | 创建 `user` 用户表（含唯一索引 uk_userAccount、普通索引 idx_userName），插入 3 条测试数据（admin/user/test，密码均为 12345678） | ✅ 已执行 |
 | 1 | 2026-09-10 | （命令行） | 创建数据库 `ai_passage_creator`（utf8mb4_unicode_ci） | ✅ 已执行 |
 
 ---
 
 ## 详细变更记录
+
+### #3 - 003_create_article.sql（2026-09-19）
+
+**变更内容：** 创建 `article` 表，用于存储选题生成任务与成品。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | bigint | 主键自增 |
+| taskId | varchar(64) | 任务 UUID，唯一索引 |
+| userId | bigint | 用户 ID，索引 |
+| topic | varchar(500) | 选题 |
+| mainTitle | varchar(200) | 主标题 |
+| subTitle | varchar(300) | 副标题 |
+| outline | json | 大纲 |
+| content | text | 正文 Markdown |
+| fullContent | text | 含配图的完整 Markdown |
+| coverImage | varchar(512) | 封面图 URL |
+| images | json | 配图列表 |
+| status | varchar(20) | PENDING / PROCESSING / COMPLETED / FAILED |
+| errorMessage | text | 失败原因 |
+| createTime | datetime | 创建时间 |
+| completedTime | datetime | 完成时间 |
+| updateTime | datetime | 更新时间 |
+| isDelete | tinyint | 逻辑删除 |
+
+**回滚脚本：**
+```sql
+DROP TABLE IF EXISTS article;
+```
 
 ### #2 - init_user.sql（2026-09-16）
 

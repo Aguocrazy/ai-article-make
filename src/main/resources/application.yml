@@ -34,6 +34,7 @@ server:
 
 mybatis-flex:
   configuration:
+    # 结果集：不要把列名按下划线转驼峰。列名本身就是驼峰。
     map-underscore-to-camel-case: false
 
 # springdoc-openapi 配置

@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 
 /**
  * 用户实体
+ * <p>
+ * {@code camelToUnderline = false}：表字段为驼峰命名，禁止 Flex 把 userAccount 转成 user_account。
  */
 @Data
 @Builder

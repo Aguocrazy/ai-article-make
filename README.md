@@ -98,7 +98,7 @@ mysql -u root -p < sql/init_user.sql
 
 MySQL 账号密码写在 `src/main/resources/application.yml`。通义千问 Key 用占位符 `${DASHSCOPE_API_KEY}`，取值在 **`config/secrets.properties`**（已 gitignore，不要提交）。把 `DASHSCOPE_API_KEY=` 后面改成你的 Key，或 `export DASHSCOPE_API_KEY=你的Key`。Redis 默认本机、无密码。
 
-应用通过实体 `User` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名，MyBatis-Flex 关闭了下划线转驼峰（`map-underscore-to-camel-case: false`）。
+应用通过实体 `User` / `Article` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名（如 `taskId`、`userAccount`）。实体上必须加 `@Table(camelToUnderline = false)`，否则 MyBatis-Flex 默认把驼峰转成下划线去查库（`taskId` → `task_id`），会报 column 不存在。`application.yml` 里同时关闭了 `map-underscore-to-camel-case`。
 
 ### 3. 启动后端
 
