@@ -80,6 +80,12 @@
             <version>5.8.32</version>
         </dependency>
 
+        <!-- Gson：解析模型返回的 JSON -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+
         <!-- Spring Data Redis -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
