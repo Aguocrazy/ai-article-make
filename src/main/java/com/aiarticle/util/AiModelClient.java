@@ -40,7 +40,7 @@ public class AiModelClient {
     /**
      * 调用 LLM（流式输出）
      */
-    private String callLlmWithStreaming(String prompt, Consumer<String> streamHandler, SseMessageTypeEnum messageType) {
+    public String callLlmWithStreaming(String prompt, Consumer<String> streamHandler, SseMessageTypeEnum messageType) {
         StringBuilder contentBuilder = new StringBuilder();
 
         Flux<ChatResponse> streamResponse = chatModel.stream(new Prompt(new UserMessage(prompt)));
