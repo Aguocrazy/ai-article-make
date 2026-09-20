@@ -20,4 +20,11 @@ public final class GsonUtils {
     public static <T> T fromJson(String json, TypeToken<T> typeToken) {
         return GSON.fromJson(json, typeToken.getType());
     }
+
+    /**
+     * 将对象序列化为 JSON。
+     */
+    public static String toJson(Object value) {
+        return GSON.toJson(value);
+    }
 }
