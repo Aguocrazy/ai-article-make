@@ -246,18 +246,19 @@ flowchart TB
 
 本项目用 SSE 而不是把整篇文章塞进一次响应，是因为大纲和正文是流式出来的：智能体边写，前端边渲染。通道按 `taskId` 区分，多个生成任务互不串台。浏览器刷新或离开页面后应关闭监听；服务端在「合成落库」结束后发送完成事件并断开。
 
-当前已实现前三个串行智能体：
+当前已实现前四个串行智能体：
 
 - `TitleAgent`：用 `topic` 非流式生成标题，写入 `ArticleState.title`
 - `OutlineAgent`：读取标题并流式生成大纲，写入 `ArticleState.outline`
 - `ContentAgent`：读取标题和大纲并流式生成 Markdown 正文，写入 `ArticleState.content`
+- `ImageRequirementAgent`：读取主标题和正文，非流式分析配图需求，写入 `ArticleState.imageRequirements`
 
-三者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
+四者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
-`/create`、SSE HTTP 通道、智能体4/5及最终编排仍待实现。
+`/create`、SSE HTTP 通道、智能体5及最终编排仍待实现。
 
 ## 当前范围与后续
 
-已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文三个串行智能体。
+已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求四个串行智能体。
 
-尚未实现：完整异步编排、智能体4/5、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
+尚未实现：完整异步编排、智能体5、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。

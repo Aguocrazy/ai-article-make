@@ -73,7 +73,7 @@ public class AiModelClient {
     /**
      * 解析 JSON 列表响应
      */
-    private <T> T parseJsonListResponse(String content, TypeToken<T> typeToken, String name) {
+    public <T> T parseJsonListResponse(String content, TypeToken<T> typeToken, String name) {
         try {
             return GsonUtils.fromJson(content, typeToken);
         } catch (JsonSyntaxException e) {
