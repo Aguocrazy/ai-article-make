@@ -32,7 +32,7 @@ public class AiModelClient {
     /**
      * 调用 LLM（非流式）
      */
-    private String callLlm(String prompt) {
+    public String callLlm(String prompt) {
         ChatResponse response = chatModel.call(new Prompt(new UserMessage(prompt)));
         return response.getResult().getOutput().getText();
     }
@@ -61,7 +61,7 @@ public class AiModelClient {
     /**
      * 解析 JSON 响应
      */
-    private <T> T parseJsonResponse(String content, Class<T> clazz, String name) {
+    public <T> T parseJsonResponse(String content, Class<T> clazz, String name) {
         try {
             return GsonUtils.fromJson(content, clazz);
         } catch (JsonSyntaxException e) {
