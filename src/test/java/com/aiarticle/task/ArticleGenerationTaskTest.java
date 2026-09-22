@@ -236,6 +236,82 @@ class ArticleGenerationTaskTest {
     }
 
     @Test
+    void run_whenStageNotificationFails_continuesPipelineAndPersistsCompleted() {
+        Article article = Article.builder().taskId("task-stage-send").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(1);
+        stubSuccessfulPipeline();
+        doThrow(new RuntimeException("SSE 断开")).when(sseEmitterService)
+                .send(eq("task-stage-send"), eq(SseMessageTypeEnum.AGENT1_COMPLETE), any());
+
+        task.run("task-stage-send");
+
+        assertEquals(ArticleConstant.STATUS_COMPLETED, article.getStatus());
+        verify(articleMergeAgent).merge(any());
+        verify(articleMapper, times(2)).update(article);
+        verify(sseEmitterService).complete(eq("task-stage-send"),
+                eq(SseMessageTypeEnum.ALL_COMPLETE), any());
+    }
+
+    @Test
+    void run_whenStreamingNotificationFails_continuesPipelineAndPersistsCompleted() {
+        Article article = Article.builder().taskId("task-stream-send").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(1);
+        stubSuccessfulPipeline();
+        when(outlineAgent.generate(any(), any())).thenAnswer(invocation -> {
+            ArticleState state = invocation.getArgument(0);
+            invocation.<Consumer<String>>getArgument(1)
+                    .accept("AGENT2_STREAMING:不能泄露的文章片段");
+            return state;
+        });
+        doThrow(new RuntimeException("SSE 断开")).when(sseEmitterService)
+                .send("task-stream-send", SseMessageTypeEnum.AGENT2_STREAMING,
+                        "不能泄露的文章片段");
+
+        task.run("task-stream-send");
+
+        assertEquals(ArticleConstant.STATUS_COMPLETED, article.getStatus());
+        verify(contentAgent).generate(any(), any());
+        verify(articleMergeAgent).merge(any());
+        verify(articleMapper, times(2)).update(article);
+    }
+
+    @Test
+    void run_whenCompletedUpdateThrows_restoresPreCompletionShapeBeforeFailureUpdate() {
+        Article article = Article.builder().taskId("task-completed-throw").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        List<Article> persistenceSnapshots = new ArrayList<>();
+        when(articleMapper.update(any())).thenAnswer(invocation -> {
+            Article value = invocation.getArgument(0);
+            persistenceSnapshots.add(Article.builder()
+                    .status(value.getStatus())
+                    .mainTitle(value.getMainTitle())
+                    .content(value.getContent())
+                    .fullContent(value.getFullContent())
+                    .completedTime(value.getCompletedTime())
+                    .errorMessage(value.getErrorMessage())
+                    .build());
+            if (persistenceSnapshots.size() == 2) {
+                throw new RuntimeException("完成状态写入失败");
+            }
+            return 1;
+        });
+        stubSuccessfulPipeline();
+
+        task.run("task-completed-throw");
+
+        assertEquals(3, persistenceSnapshots.size());
+        Article failedWrite = persistenceSnapshots.get(2);
+        assertEquals(ArticleConstant.STATUS_FAILED, failedWrite.getStatus());
+        assertEquals(null, failedWrite.getMainTitle());
+        assertEquals(null, failedWrite.getContent());
+        assertEquals(null, failedWrite.getFullContent());
+        assertEquals(null, failedWrite.getCompletedTime());
+        assertEquals("文章生成失败，请稍后重试", failedWrite.getErrorMessage());
+    }
+
+    @Test
     void run_whenAllCompleteNotificationFails_keepsPersistedArticleCompleted() {
         Article article = Article.builder().taskId("task-terminal-failure").topic("主题").build();
         when(articleMapper.selectOneByQuery(any())).thenReturn(article);

@@ -64,26 +64,25 @@ public class ArticleGenerationTask {
             updateRequired(article, ArticleConstant.STATUS_PROCESSING);
 
             titleAgent.generate(state);
-            sseEmitterService.send(taskId, SseMessageTypeEnum.AGENT1_COMPLETE, state.getTitle());
+            safeSend(taskId, SseMessageTypeEnum.AGENT1_COMPLETE, state.getTitle());
 
             outlineAgent.generate(state, streamingHandler(taskId, SseMessageTypeEnum.AGENT2_STREAMING));
-            sseEmitterService.send(taskId, SseMessageTypeEnum.AGENT2_COMPLETE, state.getOutline());
+            safeSend(taskId, SseMessageTypeEnum.AGENT2_COMPLETE, state.getOutline());
 
             contentAgent.generate(state, streamingHandler(taskId, SseMessageTypeEnum.AGENT3_STREAMING));
-            sseEmitterService.send(taskId, SseMessageTypeEnum.AGENT3_COMPLETE, state.getContent());
+            safeSend(taskId, SseMessageTypeEnum.AGENT3_COMPLETE, state.getContent());
 
             imageRequirementAgent.generate(state);
-            sseEmitterService.send(taskId, SseMessageTypeEnum.AGENT4_COMPLETE,
+            safeSend(taskId, SseMessageTypeEnum.AGENT4_COMPLETE,
                     state.getImageRequirements());
 
             imageAgent.generate(state, streamingHandler(taskId, SseMessageTypeEnum.IMAGE_COMPLETE));
-            sseEmitterService.send(taskId, SseMessageTypeEnum.AGENT5_COMPLETE, state.getImages());
+            safeSend(taskId, SseMessageTypeEnum.AGENT5_COMPLETE, state.getImages());
 
             articleMergeAgent.merge(state);
-            sseEmitterService.send(taskId, SseMessageTypeEnum.MERGE_COMPLETE, state.getFullContent());
+            safeSend(taskId, SseMessageTypeEnum.MERGE_COMPLETE, state.getFullContent());
 
-            copyCompletedState(article, state);
-            updateRequired(article, ArticleConstant.STATUS_COMPLETED);
+            persistCompleted(article, state);
         } catch (RuntimeException exception) {
             handleFailure(article, taskId, exception);
             return;
@@ -123,7 +122,26 @@ public class ArticleGenerationTask {
                     taskId, expectedType.getValue(), callback.length());
             return;
         }
-        sseEmitterService.send(taskId, actualType, callback.substring(separator + 1));
+        safeSend(taskId, actualType, callback.substring(separator + 1));
+    }
+
+    private void safeSend(String taskId, SseMessageTypeEnum type, Object data) {
+        try {
+            sseEmitterService.send(taskId, type, data);
+        } catch (RuntimeException exception) {
+            log.error("文章进度通知失败, taskId={}, type={}", taskId, type.getValue(), exception);
+        }
+    }
+
+    private void persistCompleted(Article article, ArticleState state) {
+        CompletionSnapshot snapshot = CompletionSnapshot.capture(article);
+        try {
+            copyCompletedState(article, state);
+            updateRequired(article, ArticleConstant.STATUS_COMPLETED);
+        } catch (RuntimeException exception) {
+            snapshot.restore(article);
+            throw exception;
+        }
     }
 
     private void copyCompletedState(Article article, ArticleState state) {
@@ -165,6 +183,46 @@ public class ArticleGenerationTask {
             sseEmitterService.complete(taskId, SseMessageTypeEnum.ERROR, SAFE_ERROR_MESSAGE);
         } catch (RuntimeException notificationException) {
             log.error("文章失败终态通知失败, taskId={}", taskId, notificationException);
+        }
+    }
+
+    private record CompletionSnapshot(
+            String mainTitle,
+            String subTitle,
+            String outline,
+            String content,
+            String fullContent,
+            String coverImage,
+            String images,
+            String status,
+            String errorMessage,
+            LocalDateTime completedTime) {
+
+        private static CompletionSnapshot capture(Article article) {
+            return new CompletionSnapshot(
+                    article.getMainTitle(),
+                    article.getSubTitle(),
+                    article.getOutline(),
+                    article.getContent(),
+                    article.getFullContent(),
+                    article.getCoverImage(),
+                    article.getImages(),
+                    article.getStatus(),
+                    article.getErrorMessage(),
+                    article.getCompletedTime());
+        }
+
+        private void restore(Article article) {
+            article.setMainTitle(mainTitle);
+            article.setSubTitle(subTitle);
+            article.setOutline(outline);
+            article.setContent(content);
+            article.setFullContent(fullContent);
+            article.setCoverImage(coverImage);
+            article.setImages(images);
+            article.setStatus(status);
+            article.setErrorMessage(errorMessage);
+            article.setCompletedTime(completedTime);
         }
     }
 }
