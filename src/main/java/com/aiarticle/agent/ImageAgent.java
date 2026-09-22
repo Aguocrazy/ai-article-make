@@ -70,8 +70,8 @@ public class ImageAgent {
                 method = imageSearchService.getSearchMethod();
             }
         } catch (RuntimeException e) {
-            log.warn("图片检索失败，改用降级图片, position={}, keywords={}",
-                    requirement.getPosition(), requirement.getKeywords(), e);
+            log.warn("图片检索失败，改用降级图片, position={}, keywords={}, error={}",
+                    requirement.getPosition(), requirement.getKeywords(), e.getMessage());
         }
 
         if (!StringUtils.hasText(url)) {

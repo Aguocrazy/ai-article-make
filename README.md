@@ -99,7 +99,10 @@ mysql -u root -p < sql/init_user.sql
 
 ### 2. 配置后端
 
-MySQL 账号密码写在 `src/main/resources/application.yml`。通义千问 Key 用占位符 `${DASHSCOPE_API_KEY}`，取值在 **`config/secrets.properties`**（已 gitignore，不要提交）。把 `DASHSCOPE_API_KEY=` 后面改成你的 Key，或 `export DASHSCOPE_API_KEY=你的Key`。Redis 默认本机、无密码。
+MySQL 账号密码写在 `src/main/resources/application.yml`。通义千问与 Pexels Key 使用
+`${DASHSCOPE_API_KEY}`、`${PEXELS_API_KEY}` 占位符，取值在
+**`config/secrets.properties`**（已 gitignore，不要提交）。填入对应 Key，或通过同名环境变量传入。
+Redis 默认本机、无密码。
 
 应用通过实体 `User` / `Article` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名（如 `taskId`、`userAccount`）。实体上必须加 `@Table(camelToUnderline = false)`，否则 MyBatis-Flex 默认把驼峰转成下划线去查库（`taskId` → `task_id`），会报 column 不存在。`application.yml` 里同时关闭了 `map-underscore-to-camel-case`。
 
@@ -260,10 +263,19 @@ flowchart TB
 智能体5将通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
 后续更换 Pexels、Unsplash 等来源时只需新增实现类。每完成一张图片就以
 `IMAGE_COMPLETE:` 加图片结果 JSON 的形式推送进度；检索无结果或异常时使用降级图片。
+
+当前实现 `PexelsImageSearchService` 按
+[Pexels API](https://www.pexels.com/api/documentation/) 规范调用
+`GET https://api.pexels.com/v1/search`，在 `Authorization` 请求头携带 Key，
+用 `query` 搜索、固定 `orientation=landscape`，优先取 `photos[0].src.landscape`。
+未配置 Key、API 异常或无结果时，不再请求远程 API，而是按图片位置循环使用
+`application.yml` 中的 `image.pexels.fallback-urls`。Pexels 默认限额为每小时 200 次、
+每月 20,000 次；界面保留了 “Photos by Pexels” 链接以满足来源标注要求。
+
 `/create`、SSE HTTP 通道、图文合成及最终编排仍待实现。
 
 ## 当前范围与后续
 
 已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求 → 图片检索五个串行智能体。
 
-尚未实现：具体图库实现、完整异步编排、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
+尚未实现：完整异步编排、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。

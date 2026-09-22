@@ -25,6 +25,17 @@ spring:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:your-api-key-here}
 
+# Pexels 图片检索
+image:
+  pexels:
+    api-key: ${PEXELS_API_KEY:}
+    base-url: https://api.pexels.com
+    per-page: 1
+    # API 无结果、未配置 Key 或请求失败时直接使用这些固定 CDN 图片
+    fallback-urls:
+      - https://images.pexels.com/photos/3573351/pexels-photo-3573351.png?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200
+      - https://images.pexels.com/photos/2880507/pexels-photo-2880507.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200
+
 server:
   servlet:
     # cookie 30 天过期

@@ -106,7 +106,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       </div>
       <div class="logout-row">
         <button type="button" @click="onLogout">退出账号</button>
-        <span>{{ currentUser?.userName || currentUser?.userAccount }}</span>
+        <span>
+          {{ currentUser?.userName || currentUser?.userAccount }}
+          ·
+          <a href="https://www.pexels.com" target="_blank" rel="noopener">Photos by Pexels</a>
+        </span>
       </div>
     </aside>
 
