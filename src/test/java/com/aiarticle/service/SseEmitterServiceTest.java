@@ -8,9 +8,16 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -94,6 +101,90 @@ class SseEmitterServiceTest {
     }
 
     @Test
+    void buffersImmediateSendFailureAndCompletesFailedEmitterWithError() throws IOException {
+        EmitterFactory factory = new EmitterFactory();
+        SseEmitterService service = new SseEmitterService(factory);
+        RecordingEmitter failedEmitter = (RecordingEmitter) service.subscribe("task-1");
+        IOException failure = new IOException("send failed");
+        failedEmitter.failNextSend(failure);
+
+        service.send("task-1", SseMessageTypeEnum.AGENT3_STREAMING, "retry-me");
+        RecordingEmitter replacement = (RecordingEmitter) service.subscribe("task-1");
+
+        assertThat(failedEmitter.completedWithError).isSameAs(failure);
+        assertThat(replacement.events)
+                .extracting(SseEventVO::getData)
+                .containsExactly("retry-me");
+    }
+
+    @Test
+    void retainsPendingEventWhenReplayFailsAndRetriesOnNextSubscription() throws IOException {
+        EmitterFactory factory = new EmitterFactory();
+        SseEmitterService service = new SseEmitterService(factory);
+        IOException failure = new IOException("replay failed");
+        factory.failNextEmitter(failure);
+        service.send("task-1", SseMessageTypeEnum.AGENT2_STREAMING, "pending");
+
+        RecordingEmitter failedEmitter = (RecordingEmitter) service.subscribe("task-1");
+        RecordingEmitter replacement = (RecordingEmitter) service.subscribe("task-1");
+
+        assertThat(failedEmitter.completedWithError).isSameAs(failure);
+        assertThat(replacement.events)
+                .extracting(SseEventVO::getData)
+                .containsExactly("pending");
+    }
+
+    @Test
+    void timeoutAndErrorCallbacksRemoveEmptyTaskStates() throws Exception {
+        EmitterFactory factory = new EmitterFactory();
+        SseEmitterService service = new SseEmitterService(factory);
+        RecordingEmitter timedOut = (RecordingEmitter) service.subscribe("timeout-task");
+        RecordingEmitter errored = (RecordingEmitter) service.subscribe("error-task");
+
+        timedOut.runTimeoutCallback();
+        errored.runErrorCallback(new IOException("disconnected"));
+
+        assertThat(taskStates(service))
+                .doesNotContainKeys("timeout-task", "error-task");
+    }
+
+    @Test
+    void concurrentPublishAndSubscriberReplacementPreserveEventOrder() throws Exception {
+        List<Object> deliveryOrder = Collections.synchronizedList(new ArrayList<>());
+        EmitterFactory factory = new EmitterFactory(deliveryOrder);
+        SseEmitterService service = new SseEmitterService(factory);
+        RecordingEmitter firstEmitter = (RecordingEmitter) service.subscribe("task-1");
+        firstEmitter.blockNextSend();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<?> publish = executor.submit(
+                    () -> service.send("task-1", SseMessageTypeEnum.AGENT3_STREAMING, "first"));
+            boolean sendBlocked = firstEmitter.awaitBlockedSend();
+            if (!sendBlocked) {
+                firstEmitter.releaseBlockedSend();
+            }
+            assertThat(sendBlocked).isTrue();
+
+            Future<SseEmitter> subscribe = executor.submit(() -> service.subscribe("task-1"));
+            boolean replacementCreated = factory.awaitSecondEmitterCreated();
+            firstEmitter.releaseBlockedSend();
+            assertThat(replacementCreated).isTrue();
+
+            publish.get(5, TimeUnit.SECONDS);
+            RecordingEmitter replacement = (RecordingEmitter) subscribe.get(5, TimeUnit.SECONDS);
+            service.send("task-1", SseMessageTypeEnum.AGENT3_STREAMING, "second");
+
+            assertThat(firstEmitter.events)
+                    .extracting(SseEventVO::getData)
+                    .containsExactly("first");
+            assertThat(replacement.events)
+                    .extracting(SseEventVO::getData)
+                    .containsExactly("second");
+            assertThat(deliveryOrder).containsExactly("first", "second");
+        }
+    }
+
+    @Test
     void boundsPendingEventsAndEvictsOldestNonterminalFirst() throws IOException {
         EmitterFactory factory = new EmitterFactory();
         SseEmitterService service = new SseEmitterService(factory);
@@ -151,32 +242,84 @@ class SseEmitterServiceTest {
     private static final class EmitterFactory implements Function<Long, SseEmitter> {
 
         private final List<Long> timeouts = new ArrayList<>();
+        private final List<Object> deliveryOrder;
+        private final CountDownLatch secondEmitterCreated = new CountDownLatch(1);
+        private IOException nextFailure;
+
+        private EmitterFactory() {
+            this(new ArrayList<>());
+        }
+
+        private EmitterFactory(List<Object> deliveryOrder) {
+            this.deliveryOrder = deliveryOrder;
+        }
 
         @Override
         public SseEmitter apply(Long timeout) {
             timeouts.add(timeout);
-            return new RecordingEmitter(timeout);
+            RecordingEmitter emitter = new RecordingEmitter(timeout, deliveryOrder);
+            if (nextFailure != null) {
+                emitter.failNextSend(nextFailure);
+                nextFailure = null;
+            }
+            if (timeouts.size() == 2) {
+                secondEmitterCreated.countDown();
+            }
+            return emitter;
+        }
+
+        private void failNextEmitter(IOException failure) {
+            nextFailure = failure;
+        }
+
+        private boolean awaitSecondEmitterCreated() throws InterruptedException {
+            return secondEmitterCreated.await(5, TimeUnit.SECONDS);
         }
     }
 
     private static final class RecordingEmitter extends SseEmitter {
 
         private final List<SseEventVO> events = new ArrayList<>();
+        private final List<Object> deliveryOrder;
         private boolean completed;
         private Runnable completionCallback;
+        private Runnable timeoutCallback;
+        private Consumer<Throwable> errorCallback;
+        private IOException nextFailure;
+        private Throwable completedWithError;
+        private CountDownLatch sendBlocked;
+        private CountDownLatch releaseSend;
 
-        private RecordingEmitter(Long timeout) {
+        private RecordingEmitter(Long timeout, List<Object> deliveryOrder) {
             super(timeout);
+            this.deliveryOrder = deliveryOrder;
         }
 
         @Override
         public synchronized void send(SseEventBuilder builder) throws IOException {
+            if (sendBlocked != null) {
+                sendBlocked.countDown();
+                try {
+                    releaseSend.await();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted", exception);
+                }
+            }
+            if (nextFailure != null) {
+                IOException failure = nextFailure;
+                nextFailure = null;
+                throw failure;
+            }
             builder.build().stream()
                     .map(item -> item.getData())
                     .filter(SseEventVO.class::isInstance)
                     .map(SseEventVO.class::cast)
                     .findFirst()
-                    .ifPresent(events::add);
+                    .ifPresent(event -> {
+                        events.add(event);
+                        deliveryOrder.add(event.getData());
+                    });
         }
 
         @Override
@@ -185,13 +328,57 @@ class SseEmitterServiceTest {
         }
 
         @Override
+        public synchronized void completeWithError(Throwable failure) {
+            completedWithError = failure;
+        }
+
+        @Override
         public synchronized void onCompletion(Runnable callback) {
             completionCallback = callback;
+        }
+
+        @Override
+        public synchronized void onTimeout(Runnable callback) {
+            timeoutCallback = callback;
+        }
+
+        @Override
+        public synchronized void onError(Consumer<Throwable> callback) {
+            errorCallback = callback;
+        }
+
+        private synchronized void failNextSend(IOException failure) {
+            nextFailure = failure;
+        }
+
+        private synchronized void blockNextSend() {
+            sendBlocked = new CountDownLatch(1);
+            releaseSend = new CountDownLatch(1);
+        }
+
+        private boolean awaitBlockedSend() throws InterruptedException {
+            return sendBlocked.await(5, TimeUnit.SECONDS);
+        }
+
+        private void releaseBlockedSend() {
+            releaseSend.countDown();
         }
 
         private void runCompletionCallback() {
             if (completionCallback != null) {
                 completionCallback.run();
+            }
+        }
+
+        private void runTimeoutCallback() {
+            if (timeoutCallback != null) {
+                timeoutCallback.run();
+            }
+        }
+
+        private void runErrorCallback(Throwable failure) {
+            if (errorCallback != null) {
+                errorCallback.accept(failure);
             }
         }
     }
