@@ -50,6 +50,7 @@ ai-article-make/
 │   ├── exception/       # 业务异常、错误码、全局处理
 │   ├── mapper/
 │   ├── model/           # dto / entity / state / vo
+│   ├── task/            # ArticleGenerationTask 串行编排
 │   ├── util/            # 大模型调用与 JSON 工具
 │   └── service/
 │       └── image/       # 可替换的图片检索服务接口
@@ -244,7 +245,7 @@ flowchart TB
 
 SSE 实现要点：
 
-- 连接超时 **30 分钟**。
+- SSE 连接超时 **30 分钟**（不是整篇文章的生成时限）。
 - 订阅前产生的事件会先缓冲（单任务最多约 **1000** 条），连上后再按写入顺序回放。
 - **断开连接不会取消后台生成**；客户端可稍后重新订阅，未送达事件仍可能从缓冲里补上。
 
@@ -262,7 +263,7 @@ SSE 实现要点：
 
 本项目用 SSE 而不是把整篇文章塞进一次响应，是因为大纲和正文是流式出来的：智能体边写，前端边渲染。通道按 `taskId` 区分，多个生成任务互不串台。浏览器刷新或离开页面后应关闭监听；服务端在「合成落库」结束后发送完成事件并断开。
 
-当前已实现五个串行智能体：
+当前已实现五步串行智能体，外加图文合成：
 
 - `TitleAgent`：用 `topic` 非流式生成标题，写入 `ArticleState.title`
 - `OutlineAgent`：读取标题并流式生成大纲，写入 `ArticleState.outline`
@@ -273,7 +274,7 @@ SSE 实现要点：
 
 各智能体通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
-智能体5将通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
+`ImageAgent` 通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
 后续更换 Pexels、Unsplash 等来源时只需新增实现类。每完成一张图片就以
 `IMAGE_COMPLETE:` 加图片结果 JSON 的形式推送进度；检索无结果或异常时使用降级图片。
 
