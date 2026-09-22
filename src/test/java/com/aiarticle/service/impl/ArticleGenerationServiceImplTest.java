@@ -87,6 +87,18 @@ class ArticleGenerationServiceImplTest {
     }
 
     @Test
+    void create_acceptsTopicAtMaximumLength() {
+        String topic = "x".repeat(500);
+        when(articleMapper.insert(any(Article.class))).thenReturn(1);
+
+        service.create(topic, 1L);
+
+        ArgumentCaptor<Article> captor = ArgumentCaptor.forClass(Article.class);
+        verify(articleMapper).insert(captor.capture());
+        assertEquals(topic, captor.getValue().getTopic());
+    }
+
+    @Test
     void create_rejectsInvalidTopicsAndUserIds() {
         assertParamsError(() -> service.create(null, 1L));
         assertParamsError(() -> service.create("  ", 1L));
@@ -188,9 +200,16 @@ class ArticleGenerationServiceImplTest {
     }
 
     @Test
-    void subscribe_rejectsInvalidArguments() {
+    void subscribe_rejectsNullAndBlankTaskIdsBeforeQuerying() {
+        assertParamsError(() -> service.subscribe(null, 1L));
         assertParamsError(() -> service.subscribe(" ", 1L));
+        verify(articleMapper, never()).selectOneByQuery(any());
+    }
+
+    @Test
+    void subscribe_rejectsNonPositiveUserIdsBeforeQuerying() {
         assertParamsError(() -> service.subscribe("task", 0L));
+        assertParamsError(() -> service.subscribe("task", -1L));
         verify(articleMapper, never()).selectOneByQuery(any());
     }
 
