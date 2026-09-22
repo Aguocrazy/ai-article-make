@@ -47,19 +47,24 @@ public class SseEmitterService {
      * @return 新 SSE 连接
      */
     public SseEmitter subscribe(String taskId) {
-        TaskState state = taskStates.computeIfAbsent(taskId, ignored -> new TaskState());
         SseEmitter emitter = emitterFactory.apply(SSE_TIMEOUT_MILLIS);
 
-        synchronized (state) {
-            SseEmitter oldEmitter = state.emitter;
-            state.emitter = emitter;
-            registerCleanup(taskId, state, emitter);
-            if (oldEmitter != null) {
-                oldEmitter.complete();
+        while (true) {
+            TaskState state = taskStates.computeIfAbsent(taskId, ignored -> new TaskState());
+            synchronized (state) {
+                if (taskStates.get(taskId) != state) {
+                    continue;
+                }
+                SseEmitter oldEmitter = state.emitter;
+                state.emitter = emitter;
+                registerCleanup(state, emitter);
+                if (oldEmitter != null) {
+                    oldEmitter.complete();
+                }
+                flushPending(taskId, state, emitter);
+                return emitter;
             }
-            flushPending(state, emitter);
         }
-        return emitter;
     }
 
     /**
@@ -85,29 +90,36 @@ public class SseEmitterService {
     }
 
     private void emit(String taskId, SseMessageTypeEnum type, Object data, boolean terminal) {
-        TaskState state = taskStates.computeIfAbsent(taskId, ignored -> new TaskState());
         PendingEvent event = new PendingEvent(SseEventVO.of(taskId, type, data), terminal);
 
-        synchronized (state) {
-            if (state.emitter == null) {
-                buffer(state, event);
-                return;
-            }
-            try {
-                sendEvent(state.emitter, event.event());
-                if (terminal) {
-                    SseEmitter emitter = state.emitter;
-                    state.emitter = null;
-                    emitter.complete();
+        while (true) {
+            TaskState state = taskStates.computeIfAbsent(taskId, ignored -> new TaskState());
+            synchronized (state) {
+                if (taskStates.get(taskId) != state) {
+                    continue;
                 }
-            } catch (IOException exception) {
-                state.emitter = null;
-                buffer(state, event);
+                if (state.emitter == null) {
+                    buffer(state, event);
+                    return;
+                }
+                try {
+                    sendEvent(state.emitter, event.event());
+                    if (terminal) {
+                        SseEmitter emitter = state.emitter;
+                        state.emitter = null;
+                        emitter.complete();
+                        taskStates.remove(taskId, state);
+                    }
+                } catch (IOException exception) {
+                    state.emitter = null;
+                    buffer(state, event);
+                }
+                return;
             }
         }
     }
 
-    private void flushPending(TaskState state, SseEmitter emitter) {
+    private void flushPending(String taskId, TaskState state, SseEmitter emitter) {
         while (!state.pendingEvents.isEmpty() && state.emitter == emitter) {
             PendingEvent event = state.pendingEvents.peekFirst();
             try {
@@ -122,6 +134,7 @@ public class SseEmitterService {
                 state.pendingEvents.clear();
                 state.emitter = null;
                 emitter.complete();
+                taskStates.remove(taskId, state);
                 return;
             }
         }
@@ -133,7 +146,7 @@ public class SseEmitterService {
                 .data(event));
     }
 
-    private void registerCleanup(String taskId, TaskState state, SseEmitter emitter) {
+    private void registerCleanup(TaskState state, SseEmitter emitter) {
         Runnable cleanup = () -> {
             synchronized (state) {
                 if (state.emitter == emitter) {

@@ -6,8 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,6 +64,17 @@ class SseEmitterServiceTest {
                 .containsExactly("done");
         assertThat(first.completed).isTrue();
         assertThat(second.events).isEmpty();
+    }
+
+    @Test
+    void removesTaskStateAfterReplayingTerminalEvent() throws Exception {
+        EmitterFactory factory = new EmitterFactory();
+        SseEmitterService service = new SseEmitterService(factory);
+
+        service.complete("task-1", SseMessageTypeEnum.ALL_COMPLETE, "done");
+        service.subscribe("task-1");
+
+        assertThat(taskStates(service)).doesNotContainKey("task-1");
     }
 
     @Test
@@ -126,6 +139,13 @@ class SseEmitterServiceTest {
                 .extracting(SseEventVO::getData)
                 .containsExactly("terminal-1000");
         assertThat(emitter.completed).isTrue();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, ?> taskStates(SseEmitterService service) throws Exception {
+        Field field = SseEmitterService.class.getDeclaredField("taskStates");
+        field.setAccessible(true);
+        return (Map<String, ?>) field.get(service);
     }
 
     private static final class EmitterFactory implements Function<Long, SseEmitter> {
