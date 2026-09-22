@@ -257,6 +257,7 @@ flowchart TB
 - `ContentAgent`：读取标题和大纲并流式生成 Markdown 正文，写入 `ArticleState.content`
 - `ImageRequirementAgent`：读取主标题和正文，非流式分析配图需求，写入 `ArticleState.imageRequirements`
 - `ImageAgent`：逐项调用 `ImageSearchService` 检索图片，写入 `ArticleState.images`；封面同步写入 `coverImage`
+- `ArticleMergeAgent`：逐行扫描正文，在匹配的 `##` 章节标题后插入 Markdown 图片，写入 `ArticleState.fullContent`
 
 五者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
@@ -272,10 +273,11 @@ flowchart TB
 `application.yml` 中的 `image.pexels.fallback-urls`。Pexels 默认限额为每小时 200 次、
 每月 20,000 次；界面保留了 “Photos by Pexels” 链接以满足来源标注要求。
 
-`/create`、SSE HTTP 通道、图文合成及最终编排仍待实现。
+图文合成按 `ImageResult.sectionTitle` 与二级标题文本精确匹配；同一章节存在多张图时只插入第一张，
+封面图仍单独保存在 `coverImage`。`/create`、SSE HTTP 通道及最终编排仍待实现。
 
 ## 当前范围与后续
 
-已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求 → 图片检索五个串行智能体。
+已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成链路组件。
 
-尚未实现：完整异步编排、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
+尚未实现：完整异步编排、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
