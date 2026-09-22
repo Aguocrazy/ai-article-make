@@ -178,7 +178,10 @@ function attachStreamListeners(source: EventSource) {
   })
   source.addEventListener('AGENT2_COMPLETE', () => setStage('AGENT2_COMPLETE'))
   source.addEventListener('AGENT3_STREAMING', (event) => {
-    const payload = JSON.parse((event as MessageEvent).data) as ArticleSseEvent<string>
+    const payload = parseSseEvent<string>(event)
+    if (payload == null) {
+      return
+    }
     preview.value += String(payload.data)
     setStage('AGENT3_STREAMING')
   })
@@ -187,13 +190,20 @@ function attachStreamListeners(source: EventSource) {
   source.addEventListener('IMAGE_COMPLETE', () => setStage('IMAGE_COMPLETE'))
   source.addEventListener('AGENT5_COMPLETE', () => setStage('AGENT5_COMPLETE'))
   source.addEventListener('MERGE_COMPLETE', (event) => {
-    const payload = JSON.parse((event as MessageEvent).data) as ArticleSseEvent<string>
-    preview.value = String(payload.data)
+    const payload = parseSseEvent<string>(event)
+    if (typeof payload?.data !== 'string') {
+      return
+    }
+    preview.value = payload.data
     setStage('MERGE_COMPLETE')
   })
   source.addEventListener('ALL_COMPLETE', finishSuccessfully)
   source.addEventListener('ERROR', finishWithError)
-  source.onerror = () => finishWithError('生成连接已断开，请稍后查看文章状态')
+  source.onerror = () => {
+    if (source.readyState === EventSource.CLOSED) {
+      finishWithError('生成连接已断开，请稍后查看文章状态')
+    }
+  }
 }
 
 async function generate() {
@@ -222,6 +232,7 @@ async function generate() {
 
 onBeforeUnmount(() => {
   closeEventSource()
+  streamSettled = true
 })
 
 async function copyMarkdown() {
