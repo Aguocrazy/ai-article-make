@@ -20,6 +20,10 @@ spring:
       port: 6379
       database: 0
       password:
+  # MVC 异步超时须与 SseEmitterService.TIMEOUT_MILLIS（30 分钟）对齐，否则 Tomcat 会在约 30s 关掉 SSE
+  mvc:
+    async:
+      request-timeout: 30m
   # 通义千问（DashScope）
   ai:
     dashscope:

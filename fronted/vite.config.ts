@@ -29,6 +29,7 @@ export default defineConfig({
       '/article': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        timeout: 0,
       },
     },
   },
