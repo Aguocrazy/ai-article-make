@@ -1,6 +1,6 @@
 # AI Article Make
 
-面向「AI 写文章」场景的全栈项目：后端提供用户体系与 OpenAPI 文档，前端用 Vue 3 对接同一套接口约定。当前已完成账号注册 / 登录 / 管理能力，文章生成业务尚未接入。
+面向「AI 写文章」场景的全栈项目：后端提供用户体系、文章异步生成与 OpenAPI 文档，前端用 Vue 3 对接同一套接口约定。当前已完成账号注册 / 登录 / 管理，以及工作台选题后经 SSE 流式生成文章。
 
 | 模块 | 路径 | 说明 |
 |------|------|------|
@@ -44,9 +44,9 @@ ai-article-make/
 │   ├── AiArticleMakeApplication.java
 │   ├── agent/           # 标题、大纲、正文等串行智能体
 │   ├── common/          # BaseResponse、分页 / 删除请求、ResultUtils
-│   ├── config/          # 跨域、Knife4j
+│   ├── config/          # 跨域、Knife4j、文章生成线程池
 │   ├── constant/        # 用户角色、文章状态、智能体提示词
-│   ├── controller/      # User / Test / Doc
+│   ├── controller/      # User / Article / Test / Doc
 │   ├── exception/       # 业务异常、错误码、全局处理
 │   ├── mapper/
 │   ├── model/           # dto / entity / state / vo
@@ -125,7 +125,7 @@ npm install
 npm run dev
 ```
 
-Vite 把 `/user`、`/api` 代理到 `http://localhost:8080`。浏览器访问 Vite 开发地址即可：登录页 `/login`，注册页 `/register`，登录后进入工作台 `/`。axios 携带 Cookie，与后端 Session 对齐。
+Vite 把 `/user`、`/article`、`/api` 代理到 `http://localhost:8080`。浏览器访问 Vite 开发地址即可：登录页 `/login`，注册页 `/register`，登录后进入工作台 `/`。axios 携带 Cookie，与后端 Session 对齐；工作台用 `EventSource`（`withCredentials`）订阅生成进度。
 
 ## 接口文档
 
@@ -186,9 +186,14 @@ throw new BusinessException(ErrorCode.OPERATION_ERROR, "说明");
 
 分页请求基类 `PageRequest`：`current` 从 1 起，默认 `pageSize = 10`，`sortOrder` 为 `ascend` / `descend`。
 
-## 文章生成架构（后续）
+## 文章生成
 
-生成链路按「先拿任务号、后台慢慢跑、结果用 SSE 往前推」来设计，避免一次 HTTP 请求卡到整篇文章写完。
+| 说明 | 方法 | 路径 | 权限 |
+|------|------|------|------|
+| 创建生成任务 | POST | `/article/create` | 登录；返回 `taskId` |
+| 订阅生成进度 | GET | `/article/stream/{taskId}` | 登录且仅限任务所属用户；SSE |
+
+生成链路按「先拿任务号、后台慢慢跑、结果用 SSE 往前推」实现，避免一次 HTTP 请求卡到整篇文章写完。选题长度 1～500（会先 trim）。第 6 个并发任务会立即被拒绝，返回 `OPERATION_ERROR`（`50001`），提示「生成任务已满，请稍后重试」。
 
 ```mermaid
 flowchart TB
@@ -196,7 +201,7 @@ flowchart TB
 
   subgraph iface["1. 接口层 Interface Layer"]
     direction LR
-    Create["POST /create<br/>提交选题"]
+    Create["POST /article/create<br/>提交选题"]
     TaskId["返回 taskId 给前端"]
     Create --> TaskId
   end
@@ -232,9 +237,16 @@ flowchart TB
 
 流程简述：
 
-1. 前端 `POST /create` 只提交选题，接口马上返回 `taskId`，请求结束。
-2. 后台 Worker 被触发后串行跑 5 个智能体：标题 → 大纲 → 正文 → 分析图 → 配图，最后合成落库。
-3. 前端用同一个 `taskId` 挂上 SSE；标题、流式正文、图片等到一段就往这个通道推一段，全部完成后关闭连接。
+1. 工作台 `POST /article/create` 只提交选题，接口马上返回 `taskId`，请求结束。
+2. 后台固定 **5 线程、队列容量 0** 的执行器（`AbortPolicy`）立刻跑任务；满载时不排队，第 6 个任务立即失败。
+3. 每个任务内部串行跑智能体：标题 → 大纲 → 正文 → 分析图 → 配图 → 图文合成落库。
+4. 前端用同一个 `taskId` 打开 `EventSource` 挂上 `GET /article/stream/{taskId}`；标题、流式正文、图片等到一段就往这个通道推一段，全部完成后关闭连接。
+
+SSE 实现要点：
+
+- 连接超时 **30 分钟**。
+- 订阅前产生的事件会先缓冲（单任务最多约 **1000** 条），连上后再按写入顺序回放。
+- **断开连接不会取消后台生成**；客户端可稍后重新订阅，未送达事件仍可能从缓冲里补上。
 
 ### 什么是 SSE
 
@@ -259,7 +271,7 @@ flowchart TB
 - `ImageAgent`：逐项调用 `ImageSearchService` 检索图片，写入 `ArticleState.images`；封面同步写入 `coverImage`
 - `ArticleMergeAgent`：逐行扫描正文，在匹配的 `##` 章节标题后插入 Markdown 图片，写入 `ArticleState.fullContent`
 
-五者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
+各智能体通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
 智能体5将通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
 后续更换 Pexels、Unsplash 等来源时只需新增实现类。每完成一张图片就以
@@ -274,10 +286,12 @@ flowchart TB
 每月 20,000 次；界面保留了 “Photos by Pexels” 链接以满足来源标注要求。
 
 图文合成按 `ImageResult.sectionTitle` 与二级标题文本精确匹配；同一章节存在多张图时只插入第一张，
-封面图仍单独保存在 `coverImage`。`/create`、SSE HTTP 通道及最终编排仍待实现。
+封面图仍单独保存在 `coverImage`。编排由 `ArticleGenerationTask` 串行调用上述智能体，经
+`POST /article/create` 提交、`GET /article/stream/{taskId}` 推送。
 
 ## 当前范围与后续
 
-已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成链路组件。
+已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，
+以及标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成的异步 SSE 生成（5 线程、零队列）。
 
-尚未实现：完整异步编排、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
+扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
