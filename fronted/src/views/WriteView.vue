@@ -1,7 +1,28 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  articleStreamUrl,
+  createArticle,
+  type ArticleSseEvent,
+} from '@/api/article'
 import { drafts, saveDraft, type Draft } from '@/stores/studio'
+
+const STAGE_LABELS: Record<string, string> = {
+  AGENT1_COMPLETE: '标题生成完成',
+  AGENT2_STREAMING: '大纲流式输出',
+  AGENT2_COMPLETE: '大纲生成完成',
+  AGENT3_STREAMING: '正文流式输出',
+  AGENT3_COMPLETE: '正文生成完成',
+  AGENT4_COMPLETE: '配图需求分析完成',
+  IMAGE_COMPLETE: '单张配图完成',
+  AGENT5_COMPLETE: '配图生成完成',
+  MERGE_COMPLETE: '图文合成完成',
+  ALL_COMPLETE: '全部完成',
+}
+
+let eventSource: EventSource | null = null
+let streamSettled = false
 
 const TOPICS = ['AI 与工作', '阅读习惯']
 const TYPES = ['深度解读', '教程指南', '观点评论', '故事叙述']
@@ -18,6 +39,8 @@ const tab = ref<'preview' | 'markdown'>('preview')
 const generating = ref(false)
 const showExtra = ref(false)
 const preview = ref('')
+const errorMessage = ref('')
+const progressMessage = ref('')
 const form = reactive({
   topic: '',
   type: '深度解读',
@@ -54,7 +77,19 @@ watch(
   { immediate: true },
 )
 
+function closeEventSource() {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
+}
+
 function resetForm() {
+  closeEventSource()
+  streamSettled = true
+  generating.value = false
+  errorMessage.value = ''
+  progressMessage.value = ''
   form.topic = ''
   form.type = '深度解读'
   form.tone = '专业严谨'
@@ -72,34 +107,15 @@ function fillTopic(text: string) {
   form.topic = `例如：${text === 'AI 与工作' ? 'AI 如何改变我们的工作方式' : '如何把阅读变成长期习惯'}`
 }
 
-function composeMarkdown() {
-  const audience = form.audience || '通用读者'
-  return `# ${form.topic}
-
-> ${form.type} · ${form.tone} · 约 ${form.length} 字
-> 面向：${audience}
-
-## 开篇
-从一个具体场景切入，把主题里最值得被看见的矛盾摊开。不必先下结论，先让读者觉得「这说的是我」。
-
-## 展开
-围绕 2～3 个层次推进：现象、原因、方法。每层用一个可感知的例子，而不是空泛判断。
-
-## 收束
-把读者带回可执行的下一步。${form.extra ? `\n\n## 补充要求\n${form.extra}` : ''}
-
----
-*由落笔根据创作设定生成草稿，生成接口尚未接入，当前为本地预览。*`
+function parseSseEvent<T>(event: Event): ArticleSseEvent<T> | null {
+  try {
+    return JSON.parse((event as MessageEvent).data) as ArticleSseEvent<T>
+  } catch {
+    return null
+  }
 }
 
-async function generate() {
-  if (!form.topic.trim()) {
-    return
-  }
-  generating.value = true
-  await new Promise((resolve) => setTimeout(resolve, 500))
-  preview.value = composeMarkdown()
-  tab.value = 'markdown'
+function persistDraft() {
   const id = typeof route.query.draft === 'string' ? route.query.draft : crypto.randomUUID()
   saveDraft({
     id,
@@ -116,8 +132,97 @@ async function generate() {
   if (route.query.draft !== id) {
     void router.replace({ query: { ...route.query, draft: id } })
   }
+}
+
+function finishSuccessfully() {
+  if (streamSettled) {
+    return
+  }
+  streamSettled = true
+  closeEventSource()
+  progressMessage.value = STAGE_LABELS.ALL_COMPLETE ?? '全部完成'
+  persistDraft()
   generating.value = false
 }
+
+function finishWithError(messageOrEvent: unknown) {
+  if (streamSettled) {
+    return
+  }
+  streamSettled = true
+  closeEventSource()
+  generating.value = false
+  if (typeof messageOrEvent === 'string') {
+    errorMessage.value = messageOrEvent
+    return
+  }
+  const payload = parseSseEvent<unknown>(messageOrEvent as Event)
+  if (payload?.data != null) {
+    errorMessage.value = String(payload.data)
+    return
+  }
+  errorMessage.value = '文章生成失败'
+}
+
+function setStage(type: string) {
+  progressMessage.value = STAGE_LABELS[type] ?? type
+}
+
+function attachStreamListeners(source: EventSource) {
+  source.addEventListener('AGENT1_COMPLETE', () => setStage('AGENT1_COMPLETE'))
+  source.addEventListener('AGENT2_STREAMING', (event) => {
+    const payload = parseSseEvent<string>(event)
+    progressMessage.value = payload?.data
+      ? `${STAGE_LABELS.AGENT2_STREAMING ?? '大纲流式输出'}：${String(payload.data)}`
+      : (STAGE_LABELS.AGENT2_STREAMING ?? '大纲流式输出')
+  })
+  source.addEventListener('AGENT2_COMPLETE', () => setStage('AGENT2_COMPLETE'))
+  source.addEventListener('AGENT3_STREAMING', (event) => {
+    const payload = JSON.parse((event as MessageEvent).data) as ArticleSseEvent<string>
+    preview.value += String(payload.data)
+    setStage('AGENT3_STREAMING')
+  })
+  source.addEventListener('AGENT3_COMPLETE', () => setStage('AGENT3_COMPLETE'))
+  source.addEventListener('AGENT4_COMPLETE', () => setStage('AGENT4_COMPLETE'))
+  source.addEventListener('IMAGE_COMPLETE', () => setStage('IMAGE_COMPLETE'))
+  source.addEventListener('AGENT5_COMPLETE', () => setStage('AGENT5_COMPLETE'))
+  source.addEventListener('MERGE_COMPLETE', (event) => {
+    const payload = JSON.parse((event as MessageEvent).data) as ArticleSseEvent<string>
+    preview.value = String(payload.data)
+    setStage('MERGE_COMPLETE')
+  })
+  source.addEventListener('ALL_COMPLETE', finishSuccessfully)
+  source.addEventListener('ERROR', finishWithError)
+  source.onerror = () => finishWithError('生成连接已断开，请稍后查看文章状态')
+}
+
+async function generate() {
+  if (!form.topic.trim()) {
+    return
+  }
+  closeEventSource()
+  streamSettled = false
+  errorMessage.value = ''
+  progressMessage.value = '正在创建任务…'
+  preview.value = ''
+  generating.value = true
+  tab.value = 'markdown'
+  try {
+    const { taskId } = await createArticle(form.topic.trim())
+    if (streamSettled) {
+      return
+    }
+    const source = new EventSource(articleStreamUrl(taskId), { withCredentials: true })
+    eventSource = source
+    attachStreamListeners(source)
+  } catch (error) {
+    finishWithError(error instanceof Error ? error.message : '创建任务失败')
+  }
+}
+
+onBeforeUnmount(() => {
+  closeEventSource()
+})
 
 async function copyMarkdown() {
   if (!preview.value) {
@@ -231,6 +336,8 @@ function downloadMarkdown() {
         <button class="generate" type="button" :disabled="generating || !form.topic.trim()" @click="generate">
           {{ generating ? '生成中…' : '✦  开始生成文章' }}
         </button>
+        <p v-if="progressMessage" class="gen-progress">{{ progressMessage }}</p>
+        <p v-if="errorMessage" class="gen-error">{{ errorMessage }}</p>
       </aside>
 
       <section class="card preview">
@@ -280,3 +387,21 @@ function downloadMarkdown() {
     </div>
   </section>
 </template>
+
+<style scoped>
+.gen-progress,
+.gen-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.gen-progress {
+  color: var(--gold-deep);
+}
+
+.gen-error {
+  color: #9a4b3a;
+}
+</style>
+
