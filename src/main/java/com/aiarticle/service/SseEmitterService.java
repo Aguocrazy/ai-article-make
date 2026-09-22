@@ -147,17 +147,16 @@ public class SseEmitterService {
     }
 
     private void buffer(TaskState state, PendingEvent event) {
+        if (event.terminal()) {
+            state.pendingEvents.removeIf(PendingEvent::terminal);
+        }
         state.pendingEvents.addLast(event);
         while (state.pendingEvents.size() > MAX_PENDING_EVENTS) {
             PendingEvent oldestNonterminal = state.pendingEvents.stream()
                     .filter(candidate -> !candidate.terminal())
                     .findFirst()
-                    .orElse(null);
-            if (oldestNonterminal == null) {
-                state.pendingEvents.removeFirst();
-            } else {
-                state.pendingEvents.removeFirstOccurrence(oldestNonterminal);
-            }
+                    .orElseThrow();
+            state.pendingEvents.removeFirstOccurrence(oldestNonterminal);
         }
     }
 

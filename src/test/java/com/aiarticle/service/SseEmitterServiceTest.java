@@ -112,6 +112,22 @@ class SseEmitterServiceTest {
         assertThat(emitter.completed).isTrue();
     }
 
+    @Test
+    void retainsLatestTerminalEventWhenTerminalCompletionsOverflowBuffer() throws IOException {
+        EmitterFactory factory = new EmitterFactory();
+        SseEmitterService service = new SseEmitterService(factory);
+
+        for (int i = 0; i < 1_001; i++) {
+            service.complete("task-1", SseMessageTypeEnum.ERROR, "terminal-" + i);
+        }
+        RecordingEmitter emitter = (RecordingEmitter) service.subscribe("task-1");
+
+        assertThat(emitter.events)
+                .extracting(SseEventVO::getData)
+                .containsExactly("terminal-1000");
+        assertThat(emitter.completed).isTrue();
+    }
+
     private static final class EmitterFactory implements Function<Long, SseEmitter> {
 
         private final List<Long> timeouts = new ArrayList<>();
