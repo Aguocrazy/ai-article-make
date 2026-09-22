@@ -247,21 +247,23 @@ flowchart TB
 
 本项目用 SSE 而不是把整篇文章塞进一次响应，是因为大纲和正文是流式出来的：智能体边写，前端边渲染。通道按 `taskId` 区分，多个生成任务互不串台。浏览器刷新或离开页面后应关闭监听；服务端在「合成落库」结束后发送完成事件并断开。
 
-当前已实现前四个串行智能体：
+当前已实现五个串行智能体：
 
 - `TitleAgent`：用 `topic` 非流式生成标题，写入 `ArticleState.title`
 - `OutlineAgent`：读取标题并流式生成大纲，写入 `ArticleState.outline`
 - `ContentAgent`：读取标题和大纲并流式生成 Markdown 正文，写入 `ArticleState.content`
 - `ImageRequirementAgent`：读取主标题和正文，非流式分析配图需求，写入 `ArticleState.imageRequirements`
+- `ImageAgent`：逐项调用 `ImageSearchService` 检索图片，写入 `ArticleState.images`；封面同步写入 `coverImage`
 
-四者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
+五者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
 智能体5将通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
-后续更换 Pexels、Unsplash 等来源时只需新增实现类。
-`/create`、SSE HTTP 通道、智能体5及最终编排仍待实现。
+后续更换 Pexels、Unsplash 等来源时只需新增实现类。每完成一张图片就以
+`IMAGE_COMPLETE:` 加图片结果 JSON 的形式推送进度；检索无结果或异常时使用降级图片。
+`/create`、SSE HTTP 通道、图文合成及最终编排仍待实现。
 
 ## 当前范围与后续
 
-已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求四个串行智能体。
+已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，以及标题 → 大纲 → 正文 → 配图需求 → 图片检索五个串行智能体。
 
-尚未实现：完整异步编排、智能体5、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
+尚未实现：具体图库实现、完整异步编排、图文合成、`/create` 与 SSE HTTP 推送。扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
