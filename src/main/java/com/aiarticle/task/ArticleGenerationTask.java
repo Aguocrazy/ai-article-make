@@ -17,7 +17,6 @@ import com.mybatisflex.core.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -33,8 +32,7 @@ import static com.aiarticle.model.entity.table.ArticleTableDef.ARTICLE;
 @RequiredArgsConstructor
 public class ArticleGenerationTask {
 
-    private static final int MAX_ERROR_MESSAGE_LENGTH = 2_000;
-    private static final String DEFAULT_ERROR_MESSAGE = "文章生成失败";
+    private static final String SAFE_ERROR_MESSAGE = "文章生成失败，请稍后重试";
 
     private final ArticleMapper articleMapper;
     private final TitleAgent titleAgent;
@@ -63,7 +61,7 @@ public class ArticleGenerationTask {
 
         try {
             article.setStatus(ArticleConstant.STATUS_PROCESSING);
-            articleMapper.update(article);
+            updateRequired(article, ArticleConstant.STATUS_PROCESSING);
 
             titleAgent.generate(state);
             sseEmitterService.send(taskId, SseMessageTypeEnum.AGENT1_COMPLETE, state.getTitle());
@@ -85,10 +83,16 @@ public class ArticleGenerationTask {
             sseEmitterService.send(taskId, SseMessageTypeEnum.MERGE_COMPLETE, state.getFullContent());
 
             copyCompletedState(article, state);
-            articleMapper.update(article);
-            sseEmitterService.complete(taskId, SseMessageTypeEnum.ALL_COMPLETE, state);
+            updateRequired(article, ArticleConstant.STATUS_COMPLETED);
         } catch (RuntimeException exception) {
             handleFailure(article, taskId, exception);
+            return;
+        }
+
+        try {
+            sseEmitterService.complete(taskId, SseMessageTypeEnum.ALL_COMPLETE, state);
+        } catch (RuntimeException exception) {
+            log.error("文章已完成但终态通知失败, taskId={}", taskId, exception);
         }
     }
 
@@ -98,12 +102,14 @@ public class ArticleGenerationTask {
 
     private void forwardCallback(String taskId, SseMessageTypeEnum expectedType, String callback) {
         if (callback == null) {
-            log.warn("忽略格式错误的智能体回调, taskId={}, callback=null", taskId);
+            log.warn("忽略格式错误的智能体回调, taskId={}, expected={}, length=0",
+                    taskId, expectedType.getValue());
             return;
         }
         int separator = callback.indexOf(':');
         if (separator <= 0) {
-            log.warn("忽略格式错误的智能体回调, taskId={}, callback={}", taskId, callback);
+            log.warn("忽略格式错误的智能体回调, taskId={}, expected={}, length={}",
+                    taskId, expectedType.getValue(), callback.length());
             return;
         }
 
@@ -113,8 +119,8 @@ public class ArticleGenerationTask {
                 .findFirst()
                 .orElse(null);
         if (actualType != expectedType) {
-            log.warn("忽略未知或非预期的智能体回调, taskId={}, prefix={}, expected={}",
-                    taskId, prefix, expectedType.getValue());
+            log.warn("忽略未知或非预期的智能体回调, taskId={}, expected={}, length={}",
+                    taskId, expectedType.getValue(), callback.length());
             return;
         }
         sseEmitterService.send(taskId, actualType, callback.substring(separator + 1));
@@ -135,26 +141,30 @@ public class ArticleGenerationTask {
         article.setErrorMessage(null);
     }
 
+    private void updateRequired(Article article, String targetStatus) {
+        int affectedRows = articleMapper.update(article);
+        if (affectedRows != 1) {
+            throw new IllegalStateException("文章状态更新失败: " + targetStatus);
+        }
+    }
+
     private void handleFailure(Article article, String taskId, RuntimeException exception) {
         log.error("文章生成失败, taskId={}", taskId, exception);
-        String errorMessage = safeErrorMessage(exception);
         article.setStatus(ArticleConstant.STATUS_FAILED);
-        article.setErrorMessage(errorMessage);
+        article.setErrorMessage(SAFE_ERROR_MESSAGE);
         try {
-            articleMapper.update(article);
+            int affectedRows = articleMapper.update(article);
+            if (affectedRows != 1) {
+                log.error("文章失败状态落库未更新记录, taskId={}, affectedRows={}",
+                        taskId, affectedRows);
+            }
         } catch (RuntimeException persistenceException) {
             log.error("文章失败状态落库失败, taskId={}", taskId, persistenceException);
         }
-        sseEmitterService.complete(taskId, SseMessageTypeEnum.ERROR, errorMessage);
-    }
-
-    private String safeErrorMessage(RuntimeException exception) {
-        String message = exception.getMessage();
-        if (!StringUtils.hasText(message)) {
-            message = DEFAULT_ERROR_MESSAGE;
+        try {
+            sseEmitterService.complete(taskId, SseMessageTypeEnum.ERROR, SAFE_ERROR_MESSAGE);
+        } catch (RuntimeException notificationException) {
+            log.error("文章失败终态通知失败, taskId={}", taskId, notificationException);
         }
-        return message.length() <= MAX_ERROR_MESSAGE_LENGTH
-                ? message
-                : message.substring(0, MAX_ERROR_MESSAGE_LENGTH);
     }
 }

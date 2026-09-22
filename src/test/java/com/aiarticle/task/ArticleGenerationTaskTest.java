@@ -29,14 +29,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -195,7 +198,89 @@ class ArticleGenerationTaskTest {
 
         task.run("task-3");
 
-        verify(sseEmitterService).complete("task-3", SseMessageTypeEnum.ERROR, "模型异常");
+        verify(articleMapper, times(2)).update(article);
+        verify(sseEmitterService).complete("task-3", SseMessageTypeEnum.ERROR,
+                "文章生成失败，请稍后重试");
+    }
+
+    @Test
+    void run_whenProcessingUpdateAffectsNoRows_failsBeforeAgentWorkAndAttemptsFailureUpdate() {
+        Article article = Article.builder().taskId("task-processing-zero").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(0).thenReturn(1);
+
+        task.run("task-processing-zero");
+
+        assertEquals(ArticleConstant.STATUS_FAILED, article.getStatus());
+        verify(articleMapper, times(2)).update(article);
+        verify(titleAgent, never()).generate(any());
+        verify(sseEmitterService).complete("task-processing-zero", SseMessageTypeEnum.ERROR,
+                "文章生成失败，请稍后重试");
+    }
+
+    @Test
+    void run_whenCompletedUpdateAffectsNoRows_marksFailedAndSendsError() {
+        Article article = Article.builder().taskId("task-completed-zero").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(1).thenReturn(0).thenReturn(1);
+        stubSuccessfulPipeline();
+
+        task.run("task-completed-zero");
+
+        assertEquals(ArticleConstant.STATUS_FAILED, article.getStatus());
+        verify(articleMapper, times(3)).update(article);
+        verify(sseEmitterService, never()).complete(eq("task-completed-zero"),
+                eq(SseMessageTypeEnum.ALL_COMPLETE), any());
+        verify(sseEmitterService).complete("task-completed-zero", SseMessageTypeEnum.ERROR,
+                "文章生成失败，请稍后重试");
+    }
+
+    @Test
+    void run_whenAllCompleteNotificationFails_keepsPersistedArticleCompleted() {
+        Article article = Article.builder().taskId("task-terminal-failure").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(1);
+        stubSuccessfulPipeline();
+        doThrow(new RuntimeException("SSE 断开")).when(sseEmitterService)
+                .complete(eq("task-terminal-failure"), eq(SseMessageTypeEnum.ALL_COMPLETE), any());
+
+        assertDoesNotThrow(() -> task.run("task-terminal-failure"));
+
+        assertEquals(ArticleConstant.STATUS_COMPLETED, article.getStatus());
+        verify(articleMapper, times(2)).update(article);
+        verify(sseEmitterService, never()).complete(eq("task-terminal-failure"),
+                eq(SseMessageTypeEnum.ERROR), any());
+    }
+
+    @Test
+    void run_whenErrorNotificationFails_doesNotEscape() {
+        Article article = Article.builder().taskId("task-error-notification").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(1);
+        when(titleAgent.generate(any())).thenThrow(new RuntimeException("模型异常"));
+        doThrow(new RuntimeException("SSE 断开")).when(sseEmitterService)
+                .complete("task-error-notification", SseMessageTypeEnum.ERROR,
+                        "文章生成失败，请稍后重试");
+
+        assertDoesNotThrow(() -> task.run("task-error-notification"));
+
+        assertEquals(ArticleConstant.STATUS_FAILED, article.getStatus());
+        verify(articleMapper, times(2)).update(article);
+    }
+
+    @Test
+    void run_whenInternalFailureContainsSecret_persistsAndSendsSanitizedMessage() {
+        Article article = Article.builder().taskId("task-secret").topic("主题").build();
+        when(articleMapper.selectOneByQuery(any())).thenReturn(article);
+        when(articleMapper.update(any())).thenReturn(1);
+        when(titleAgent.generate(any())).thenThrow(
+                new RuntimeException("DashScope apiKey=sk-secret credential rejected"));
+
+        task.run("task-secret");
+
+        assertEquals("文章生成失败，请稍后重试", article.getErrorMessage());
+        verify(sseEmitterService).complete("task-secret", SseMessageTypeEnum.ERROR,
+                "文章生成失败，请稍后重试");
     }
 
     @Test
@@ -236,5 +321,26 @@ class ArticleGenerationTaskTest {
         verify(titleAgent, never()).generate(any());
         verify(articleMapper, never()).update(any());
         verify(sseEmitterService, never()).complete(any(), any(), any());
+    }
+
+    private void stubSuccessfulPipeline() {
+        when(titleAgent.generate(any())).thenAnswer(invocation -> {
+            ArticleState state = invocation.getArgument(0);
+            state.setTitle(new TitleResult());
+            return state;
+        });
+        when(outlineAgent.generate(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(contentAgent.generate(any(), any())).thenAnswer(invocation -> {
+            ArticleState state = invocation.getArgument(0);
+            state.setContent("正文");
+            return state;
+        });
+        when(imageRequirementAgent.generate(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(imageAgent.generate(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(articleMergeAgent.merge(any())).thenAnswer(invocation -> {
+            ArticleState state = invocation.getArgument(0);
+            state.setFullContent("完整图文");
+            return state;
+        });
     }
 }
