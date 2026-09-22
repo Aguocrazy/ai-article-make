@@ -52,6 +52,7 @@ ai-article-make/
 │   ├── model/           # dto / entity / state / vo
 │   ├── util/            # 大模型调用与 JSON 工具
 │   └── service/
+│       └── image/       # 可替换的图片检索服务接口
 ├── src/main/resources/
 │   ├── application.yml          # 数据源、Redis、Session、Knife4j
 │   └── application.properties   # 端口 8080、日志级别
@@ -255,6 +256,8 @@ flowchart TB
 
 四者通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
+智能体5将通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
+后续更换 Pexels、Unsplash 等来源时只需新增实现类。
 `/create`、SSE HTTP 通道、智能体5及最终编排仍待实现。
 
 ## 当前范围与后续
