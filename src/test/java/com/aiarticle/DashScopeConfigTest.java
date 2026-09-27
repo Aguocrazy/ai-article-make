@@ -1,6 +1,7 @@
 package com.aiarticle;
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -41,7 +42,8 @@ class DashScopeConfigTest {
     void simpleChatWhenApiKeyIsReal() {
         Assumptions.assumeFalse(PLACEHOLDER_KEY.equals(apiKey) || apiKey.isBlank(),
                 "未配置真实 DASHSCOPE_API_KEY，跳过模型调用");
-        ChatResponse response = dashScopeChatModel.call(new Prompt("只回复一个词：pong"));
+        ChatResponse response = dashScopeChatModel.call(new Prompt("只回复一个词：pong",
+                DashScopeChatOptions.builder().withMultiModel(true).build()));
         assertNotNull(response);
         assertNotNull(response.getResult());
         String text = response.getResult().getOutput().getText();

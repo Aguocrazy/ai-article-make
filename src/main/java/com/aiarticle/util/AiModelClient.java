@@ -2,6 +2,7 @@ package com.aiarticle.util;
 
 import com.aiarticle.enums.SseMessageTypeEnum;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatModel;
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import jakarta.annotation.Resource;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -29,11 +31,17 @@ public class AiModelClient {
     @Resource
     private DashScopeChatModel chatModel;
 
+    @Value("${spring.ai.dashscope.chat.options.model:}")
+    private String model;
+
+    @Value("${spring.ai.dashscope.chat.options.multi-model:false}")
+    private boolean multiModel;
+
     /**
      * 调用 LLM（非流式）
      */
     public String callLlm(String prompt) {
-        ChatResponse response = chatModel.call(new Prompt(new UserMessage(prompt)));
+        ChatResponse response = chatModel.call(promptOf(prompt));
         return response.getResult().getOutput().getText();
     }
 
@@ -43,7 +51,7 @@ public class AiModelClient {
     public String callLlmWithStreaming(String prompt, Consumer<String> streamHandler, SseMessageTypeEnum messageType) {
         StringBuilder contentBuilder = new StringBuilder();
 
-        Flux<ChatResponse> streamResponse = chatModel.stream(new Prompt(new UserMessage(prompt)));
+        Flux<ChatResponse> streamResponse = chatModel.stream(promptOf(prompt));
 
         streamResponse
                 .doOnNext(response -> {
@@ -56,6 +64,18 @@ public class AiModelClient {
                 .doOnError(error -> log.error("LLM 流式调用失败， messageType={}", messageType, error))
                 .blockLast();
         return contentBuilder.toString();
+    }
+
+    /**
+     * 每次请求带上 multiModel，避免 RC2 合并 options 时把 YAML 里的 true 盖成 false，
+     * 从而打到文本端点触发 url error。
+     */
+    private Prompt promptOf(String prompt) {
+        var options = DashScopeChatOptions.builder().withMultiModel(multiModel);
+        if (StringUtils.hasText(model)) {
+            options.withModel(model);
+        }
+        return new Prompt(new UserMessage(prompt), options.build());
     }
 
     /**

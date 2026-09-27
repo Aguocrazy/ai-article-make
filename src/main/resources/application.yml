@@ -30,7 +30,9 @@ spring:
       api-key: ${DASHSCOPE_API_KEY:your-api-key-here}
       chat:
         options:
+          # qwen3.8-27b 是视觉语言模型，DashScope 必须走多模态端点，否则报 url error
           model: qwen3.8-27b
+          multi-model: true
 
 # Pexels 图片检索
 image:
