@@ -7,6 +7,7 @@ import com.aiarticle.exception.ErrorCode;
 import com.aiarticle.exception.ThrowUtils;
 import com.aiarticle.model.dto.article.ArticleCreateRequest;
 import com.aiarticle.model.dto.article.ArticleQueryRequest;
+import com.aiarticle.model.dto.article.ArticleUpdateRequest;
 import com.aiarticle.model.entity.User;
 import com.aiarticle.model.vo.ArticleDetailVO;
 import com.aiarticle.model.vo.ArticleTaskVO;
@@ -112,6 +113,25 @@ public class ArticleController {
         ThrowUtils.throwIf(deleteRequest == null || deleteRequest.getId() == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(request);
         articleService.deleteMine(deleteRequest.getId(), loginUser.getId());
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 保存当前用户对文章正文的修改。
+     */
+    @Operation(summary = "保存我的文章", description = "仅能修改自己的文章正文")
+    @PostMapping("/update")
+    public BaseResponse<Boolean> updateMine(
+            @RequestBody ArticleUpdateRequest articleUpdateRequest,
+            HttpServletRequest request) {
+        ThrowUtils.throwIf(articleUpdateRequest == null || articleUpdateRequest.id() == null,
+                ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        articleService.updateMine(
+                articleUpdateRequest.id(),
+                articleUpdateRequest.topic(),
+                articleUpdateRequest.content(),
+                loginUser.getId());
         return ResultUtils.success(true);
     }
 }

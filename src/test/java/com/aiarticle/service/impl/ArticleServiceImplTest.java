@@ -12,6 +12,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -102,5 +103,21 @@ class ArticleServiceImplTest {
         BusinessException error = assertThrows(BusinessException.class, () -> service.deleteMine(8L, 9L));
         assertEquals(ErrorCode.NOT_FOUND_ERROR.getCode(), error.getCode());
         verify(articleMapper, never()).deleteById(any());
+    }
+
+    @Test
+    void updateMine_writesContentForOwner() {
+        when(articleMapper.selectOneById(8L)).thenReturn(
+                Article.builder().id(8L).userId(9L).build());
+        when(articleMapper.update(any(Article.class))).thenReturn(1);
+
+        service.updateMine(8L, "  新选题  ", "  # 正文  ", 9L);
+
+        ArgumentCaptor<Article> captor = ArgumentCaptor.forClass(Article.class);
+        verify(articleMapper).update(captor.capture());
+        assertEquals(8L, captor.getValue().getId());
+        assertEquals("新选题", captor.getValue().getTopic());
+        assertEquals("# 正文", captor.getValue().getContent());
+        assertEquals("# 正文", captor.getValue().getFullContent());
     }
 }

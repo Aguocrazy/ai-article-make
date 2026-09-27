@@ -66,6 +66,10 @@ export function deleteMyArticle(id: string) {
   return post<boolean>('/article/delete', { id })
 }
 
+export function updateMyArticle(payload: { id: string; topic?: string; content: string }) {
+  return post<boolean>('/article/update', payload)
+}
+
 export function articleStreamUrl(taskId: string) {
   return `/article/stream/${encodeURIComponent(taskId)}`
 }

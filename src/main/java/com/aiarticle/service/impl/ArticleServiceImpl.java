@@ -83,6 +83,35 @@ public class ArticleServiceImpl implements ArticleService {
         }
     }
 
+    @Override
+    public void updateMine(long id, String topic, String content, long userId) {
+        if (id <= 0 || userId <= 0 || content == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String normalizedContent = content.trim();
+        if (normalizedContent.isEmpty() || normalizedContent.length() > 200_000) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "正文不能为空且不超过 20 万字");
+        }
+        Article existing = articleMapper.selectOneById(id);
+        if (existing == null || !Objects.equals(existing.getUserId(), userId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        Article patch = new Article();
+        patch.setId(id);
+        patch.setContent(normalizedContent);
+        patch.setFullContent(normalizedContent);
+        if (StrUtil.isNotBlank(topic)) {
+            String normalizedTopic = topic.trim();
+            if (normalizedTopic.length() > 500) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR);
+            }
+            patch.setTopic(normalizedTopic);
+        }
+        if (articleMapper.update(patch) != 1) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "保存文章失败");
+        }
+    }
+
     private ArticleVO toListVo(Article article) {
         ArticleVO vo = new ArticleVO();
         BeanUtils.copyProperties(article, vo);

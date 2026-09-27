@@ -249,6 +249,7 @@ throw new BusinessException(ErrorCode.OPERATION_ERROR, "说明");
 | 分页查询我的文章 | POST | `/article/list/page/vo` | 登录；只返回当前用户，`pageSize` 最大 50 |
 | 文章详情 | GET | `/article/get/{id}` | 登录；只能看自己的文章 |
 | 删除我的文章 | POST | `/article/delete` | 登录；只能删自己的，逻辑删除 |
+| 保存我的文章 | POST | `/article/update` | 登录；只能改自己的正文 |
 
 生成链路按「先拿任务号、后台慢慢跑、结果用 SSE 往前推」实现，避免一次 HTTP 请求卡到整篇文章写完。选题长度 1～500（会先 trim）。第 6 个并发任务会立即被拒绝，返回 `OPERATION_ERROR`（`50001`），提示「生成任务已满，请稍后重试」。
 

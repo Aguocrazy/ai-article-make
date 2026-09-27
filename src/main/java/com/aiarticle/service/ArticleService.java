@@ -24,4 +24,9 @@ public interface ArticleService {
      * 逻辑删除当前用户的一篇文章。
      */
     void deleteMine(long id, long userId);
+
+    /**
+     * 更新当前用户的一篇文章正文。
+     */
+    void updateMine(long id, String topic, String content, long userId);
 }

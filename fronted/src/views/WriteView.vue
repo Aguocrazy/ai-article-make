@@ -6,9 +6,11 @@ import {
   createArticle,
   deleteMyArticle,
   getMyArticle,
+  updateMyArticle,
   type ArticleSseEvent,
 } from '@/api/article'
 import { loadMyArticles } from '@/stores/articles'
+import { renderMarkdown } from '@/utils/markdown'
 
 const STAGE_LABELS: Record<string, string> = {
   AGENT1_COMPLETE: '标题生成完成',
@@ -41,8 +43,11 @@ const route = useRoute()
 const router = useRouter()
 const tab = ref<'preview' | 'markdown'>('preview')
 const generating = ref(false)
+const editing = ref(false)
+const saving = ref(false)
 const showExtra = ref(false)
 const preview = ref('')
+const snapshotBeforeEdit = ref('')
 const errorMessage = ref('')
 const progressMessage = ref('')
 const form = reactive({
@@ -108,6 +113,7 @@ function applySettings(article: {
 }
 
 const count = computed(() => form.topic.length)
+const renderedPreview = computed(() => (preview.value ? renderMarkdown(preview.value) : ''))
 const openedArticleId = computed(() => {
   const raw = route.query.article
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null
@@ -127,7 +133,10 @@ watch(
       preview.value = article.fullContent || article.content || ''
       errorMessage.value = article.errorMessage || ''
       progressMessage.value = article.status === 'COMPLETED' ? '已从账号打开' : (article.status || '')
-      tab.value = 'markdown'
+      editing.value = false
+      saving.value = false
+      snapshotBeforeEdit.value = ''
+      tab.value = article.fullContent || article.content ? 'preview' : 'markdown'
     } catch (error) {
       const message = error instanceof Error ? error.message : '打开文章失败'
       errorMessage.value = message === '请求数据不存在' ? '这篇文单不存在或已删除' : message
@@ -162,11 +171,59 @@ function resetForm() {
   form.audience = ''
   form.extra = ''
   preview.value = ''
+  editing.value = false
+  saving.value = false
+  snapshotBeforeEdit.value = ''
   showExtra.value = false
   const query = { ...route.query }
   delete query.draft
   delete query.article
   void router.replace({ query })
+}
+
+function startEdit() {
+  if (!openedArticleId.value || generating.value || !preview.value) {
+    return
+  }
+  snapshotBeforeEdit.value = preview.value
+  editing.value = true
+  tab.value = 'markdown'
+  errorMessage.value = ''
+  progressMessage.value = '正在编辑'
+}
+
+function cancelEdit() {
+  preview.value = snapshotBeforeEdit.value
+  editing.value = false
+  saving.value = false
+  progressMessage.value = '已从账号打开'
+}
+
+async function saveOpenedArticle() {
+  if (openedArticleId.value == null || saving.value) {
+    return
+  }
+  if (!preview.value.trim()) {
+    errorMessage.value = '正文不能为空'
+    return
+  }
+  saving.value = true
+  errorMessage.value = ''
+  try {
+    await updateMyArticle({
+      id: openedArticleId.value,
+      topic: form.topic.trim() || undefined,
+      content: preview.value,
+    })
+    snapshotBeforeEdit.value = preview.value
+    editing.value = false
+    progressMessage.value = '已保存'
+    await loadMyArticles()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '保存失败'
+  } finally {
+    saving.value = false
+  }
 }
 
 async function removeOpenedArticle() {
@@ -205,6 +262,7 @@ function finishSuccessfully() {
   closeEventSource()
   progressMessage.value = STAGE_LABELS.ALL_COMPLETE ?? '全部完成'
   generating.value = false
+  tab.value = 'preview'
   void loadMyArticles()
 }
 
@@ -460,7 +518,7 @@ function downloadMarkdown() {
           <textarea v-model="form.extra" placeholder="结构、禁忌、必须出现的观点…" />
         </div>
 
-        <button class="generate" type="button" :disabled="generating || !form.topic.trim()" @click="generate">
+        <button class="generate" type="button" :disabled="generating || editing || !form.topic.trim()" @click="generate">
           {{ generating ? '生成中…' : '✦  开始生成文章' }}
         </button>
         <p v-if="progressMessage" class="gen-progress">{{ progressMessage }}</p>
@@ -478,6 +536,20 @@ function downloadMarkdown() {
             </button>
           </div>
           <div class="preview-tools">
+            <button
+              v-if="openedArticleId && preview && !generating && !editing"
+              class="pill"
+              type="button"
+              @click="startEdit"
+            >
+              编辑
+            </button>
+            <template v-if="editing">
+              <button class="pill" type="button" :disabled="saving" @click="cancelEdit">取消</button>
+              <button class="pill is-save" type="button" :disabled="saving" @click="saveOpenedArticle">
+                {{ saving ? '保存中…' : '保存' }}
+              </button>
+            </template>
             <button class="icon-btn" type="button" title="复制" @click="copyMarkdown">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <rect x="8" y="8" width="10" height="12" rx="2" stroke="currentColor" stroke-width="1.6" />
@@ -488,7 +560,7 @@ function downloadMarkdown() {
           </div>
         </div>
 
-        <div class="preview-body">
+        <div class="preview-body" :class="{ 'has-doc': preview }">
           <div v-if="!preview" class="blank">
             <div class="blank-art">
               <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
@@ -508,6 +580,17 @@ function downloadMarkdown() {
               <span><i class="step-no">3</i>生成文章</span>
             </div>
           </div>
+          <article
+            v-else-if="tab === 'preview'"
+            class="article-view"
+            v-html="renderedPreview"
+          />
+          <textarea
+            v-else-if="editing && tab === 'markdown'"
+            v-model="preview"
+            class="markdown-editor"
+            spellcheck="false"
+          />
           <article v-else class="markdown">{{ preview }}</article>
         </div>
       </section>
@@ -543,6 +626,115 @@ function downloadMarkdown() {
 
 .length-grid {
   grid-template-columns: repeat(2, 1fr);
+}
+
+.preview-body.has-doc {
+  display: block;
+  padding: 0;
+  place-items: unset;
+}
+
+.article-view {
+  width: 100%;
+  height: 100%;
+  padding: 28px 40px 56px;
+  overflow: auto;
+  color: var(--ink);
+  line-height: 1.85;
+}
+
+.article-view :deep(h1),
+.article-view :deep(h2),
+.article-view :deep(h3) {
+  font-family: var(--serif);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.article-view :deep(h1) {
+  margin: 0 0 16px;
+  font-size: 30px;
+}
+
+.article-view :deep(h2) {
+  margin: 32px 0 12px;
+  font-size: 22px;
+}
+
+.article-view :deep(h3) {
+  margin: 24px 0 10px;
+  font-size: 18px;
+}
+
+.article-view :deep(p) {
+  margin: 0 0 14px;
+}
+
+.article-view :deep(img) {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  margin: 18px 0 22px;
+  border-radius: 14px;
+  background: #f3ead6;
+}
+
+.article-view :deep(ul),
+.article-view :deep(ol) {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.article-view :deep(blockquote) {
+  margin: 16px 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid #e6d19a;
+  color: var(--ink-2);
+}
+
+.article-view :deep(a) {
+  color: var(--gold-deep);
+}
+
+.article-view :deep(code) {
+  font-size: 0.9em;
+  background: #f6f0e4;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.article-view :deep(pre) {
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f6f0e4;
+}
+
+.article-view :deep(pre code) {
+  padding: 0;
+  background: none;
+}
+
+.pill.is-save {
+  background: var(--gold-soft);
+  color: var(--gold-deep);
+}
+
+.markdown-editor {
+  display: block;
+  width: 100%;
+  min-height: 560px;
+  height: 100%;
+  padding: 28px 36px 48px;
+  border: 0;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  line-height: 1.8;
+  font: inherit;
+  outline: none;
 }
 </style>
 
