@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { deleteMyArticle } from '@/api/article'
 import { articleCount, articleTitle, articles, articlesError, articlesLoading, loadMyArticles } from '@/stores/articles'
+import WriteView from '@/views/WriteView.vue'
 
+const route = useRoute()
 const router = useRouter()
+const openedArticleId = computed(() => {
+  const raw = route.query.article
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : ''
+})
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: '排队中',
@@ -14,7 +20,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 function openArticle(id: string) {
-  void router.push({ name: 'write', query: { article: id } })
+  void router.push({ name: 'drafts', query: { article: id } })
 }
 
 async function removeArticle(id: string, title: string) {
@@ -42,7 +48,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="card users-panel">
+  <WriteView v-if="openedArticleId" />
+  <section v-else class="card users-panel">
     <h2>我的文章</h2>
     <p class="lede">保存在账号下，换设备登录后也能打开。共 {{ articleCount }} 篇。</p>
     <p v-if="articlesError" class="alert">{{ articlesError }}</p>

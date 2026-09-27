@@ -155,7 +155,7 @@ function closeEventSource() {
   }
 }
 
-function resetForm() {
+function clearWorkspace() {
   closeEventSource()
   streamSettled = true
   generating.value = false
@@ -175,6 +175,14 @@ function resetForm() {
   saving.value = false
   snapshotBeforeEdit.value = ''
   showExtra.value = false
+}
+
+function resetForm() {
+  clearWorkspace()
+  if (route.name === 'drafts') {
+    void router.replace({ name: 'write' })
+    return
+  }
   const query = { ...route.query }
   delete query.draft
   delete query.article
@@ -236,7 +244,8 @@ async function removeOpenedArticle() {
   try {
     await deleteMyArticle(openedArticleId.value)
     await loadMyArticles()
-    resetForm()
+    clearWorkspace()
+    void router.replace({ name: route.name === 'drafts' ? 'drafts' : 'write' })
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '删除失败'
   }

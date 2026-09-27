@@ -91,7 +91,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           :key="item.id"
           class="recent-item"
           type="button"
-          @click="router.push({ name: 'write', query: { article: String(item.id) } })"
+          @click="router.push({ name: 'drafts', query: { article: String(item.id) } })"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M7 4h10v16H7z" stroke="currentColor" stroke-width="1.6" />
