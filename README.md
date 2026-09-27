@@ -80,15 +80,32 @@ model/dto 请求  → entity 表映射  → vo 脱敏返回
 
 ## 快速开始
 
-### 1. 初始化数据库
+日常开发按下面顺序走：先准备好 MySQL / Redis 和密钥，再起后端，最后起前端。前端依赖 Vite 把 `/user`、`/article`、`/api` 代理到 `8080`，所以后端要先就绪，否则登录探测会 502。
 
-在 MySQL 中执行：
+### 1. 启动依赖服务
+
+本机需要：
+
+- MySQL 8.0+（库名 `ai_passage_creator`）
+- Redis（默认 `localhost:6379`，无密码）
+
+macOS 示例：
+
+```bash
+brew services start mysql
+brew services start redis
+```
+
+### 2. 初始化数据库
+
+首次在仓库根目录执行：
 
 ```bash
 mysql -u root -p < sql/init_user.sql
+mysql -u root -p ai_passage_creator < sql/003_create_article.sql
 ```
 
-脚本会创建库 `ai_passage_creator`、表 `user`，并插入测试账号。变更履历见 [`sql/CHANGELOG.md`](sql/CHANGELOG.md)。
+`init_user.sql` 会建库 `ai_passage_creator`、建 `user` 表并插入测试账号。`003_create_article.sql` 建 `article` 表。变更履历见 [`sql/CHANGELOG.md`](sql/CHANGELOG.md)。已执行过的脚本不要改，增量用新编号脚本。
 
 预置账号（明文密码均为 `12345678`）：
 
@@ -98,27 +115,47 @@ mysql -u root -p < sql/init_user.sql
 | `user` | 普通用户 |
 | `test` | 普通用户 |
 
-### 2. 配置后端
+### 3. 配置密钥与数据源
 
 MySQL 账号密码写在 `src/main/resources/application.yml`。通义千问与 Pexels Key 使用
-`${DASHSCOPE_API_KEY}`、`${PEXELS_API_KEY}` 占位符，取值在
-**`config/secrets.properties`**（已 gitignore，不要提交）。填入对应 Key，或通过同名环境变量传入。
-Redis 默认本机、无密码。
+`${DASHSCOPE_API_KEY}`、`${PEXELS_API_KEY}` 占位符，取值放在
+**`config/secrets.properties`**（已 gitignore，不要提交）：
+
+```properties
+DASHSCOPE_API_KEY=你的通义千问 Key
+PEXELS_API_KEY=你的 Pexels Key
+```
+
+也可通过同名环境变量传入。未配 Pexels Key 时配图走 `application.yml` 里的兜底图。
 
 应用通过实体 `User` / `Article` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名（如 `taskId`、`userAccount`）。实体上必须加 `@Table(camelToUnderline = false)`，否则 MyBatis-Flex 默认把驼峰转成下划线去查库（`taskId` → `task_id`），会报 column 不存在。`application.yml` 里同时关闭了 `map-underscore-to-camel-case`。
 
-### 3. 启动后端
+### 4. 启动后端
+
+在仓库根目录。本机 JDK 需为 21；若 `java` 不是 21，先指定 `JAVA_HOME`：
 
 ```bash
+export JAVA_HOME=/Users/guoshao/Library/Java/JavaVirtualMachines/ms-21.0.11/Contents/Home
 ./mvnw spring-boot:run
-# 或
+```
+
+或打包后再跑：
+
+```bash
 ./mvnw clean package -DskipTests
 java -jar target/ai-article-make-0.0.1-SNAPSHOT.jar
 ```
 
-服务地址：`http://localhost:8080`（无 `context-path`）。
+日志出现 `Started AiArticleMakeApplication` 即表示就绪。
 
-### 4. 启动前端
+| 地址 | 说明 |
+|------|------|
+| http://localhost:8080 | 后端（无 `context-path`） |
+| http://localhost:8080/doc.html | Knife4j 接口文档 |
+
+### 5. 启动前端
+
+另开一个终端：
 
 ```bash
 cd fronted
@@ -126,7 +163,17 @@ npm install
 npm run dev
 ```
 
-Vite 把 `/user`、`/article`、`/api` 代理到 `http://localhost:8080`。浏览器访问 Vite 开发地址即可：登录页 `/login`，注册页 `/register`，登录后进入工作台 `/`。axios 携带 Cookie，与后端 Session 对齐；工作台用 `EventSource`（`withCredentials`）订阅生成进度。
+默认开发地址：http://localhost:5173/
+
+| 路径 | 说明 |
+|------|------|
+| `/login` | 登录 |
+| `/register` | 注册 |
+| `/` | 登录后的工作台（写文章） |
+
+axios 携带 Cookie，与后端 Session 对齐；工作台用 `EventSource`（`withCredentials`）订阅生成进度。`/article` 代理超时为 0，避免 SSE 被 Vite 提前掐断。
+
+首次 `npm run dev` 若早于后端就绪，控制台可能出现 `/user/get/login` 的 502，等后端起来后刷新即可。
 
 ## 接口文档
 
