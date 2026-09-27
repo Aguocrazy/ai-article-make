@@ -1,41 +1,56 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { drafts, removeDraft } from '@/stores/studio'
+import { articleCount, articleTitle, articles, articlesError, articlesLoading, loadMyArticles } from '@/stores/articles'
 
 const router = useRouter()
 
-function openDraft(id: string) {
-  void router.push({ name: 'write', query: { draft: id } })
+const STATUS_LABEL: Record<string, string> = {
+  PENDING: '排队中',
+  PROCESSING: '生成中',
+  COMPLETED: '已完成',
+  FAILED: '失败',
 }
 
-function formatTime(value: number) {
+function openArticle(id: number) {
+  void router.push({ name: 'write', query: { article: String(id) } })
+}
+
+function formatTime(value?: string) {
+  if (!value) {
+    return '—'
+  }
   return new Date(value).toLocaleString()
 }
+
+onMounted(() => {
+  void loadMyArticles()
+})
 </script>
 
 <template>
   <section class="card users-panel">
-    <h2>我的草稿</h2>
-    <p class="lede">草稿先存在这台电脑上。生成接口接上之后，会改成跟账号走。</p>
-    <p v-if="drafts.length === 0" class="empty">还没有草稿。去文章创作里写一个主题吧。</p>
+    <h2>我的文章</h2>
+    <p class="lede">保存在账号下，换设备登录后也能打开。共 {{ articleCount }} 篇。</p>
+    <p v-if="articlesError" class="alert">{{ articlesError }}</p>
+    <p v-else-if="articlesLoading" class="empty">正在加载…</p>
+    <p v-else-if="articles.length === 0" class="empty">还没有文章。去文章创作里提交一个主题吧。</p>
     <table v-else>
       <thead>
         <tr>
           <th>标题</th>
-          <th>类型</th>
+          <th>状态</th>
           <th>更新时间</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="item in drafts" :key="item.id">
-          <td>{{ item.title }}</td>
-          <td>{{ item.type }}</td>
-          <td>{{ formatTime(item.updatedAt) }}</td>
+        <tr v-for="item in articles" :key="item.id">
+          <td>{{ articleTitle(item) }}</td>
+          <td>{{ STATUS_LABEL[item.status] || item.status }}</td>
+          <td>{{ formatTime(item.updateTime || item.createTime) }}</td>
           <td>
-            <button class="extra-link" type="button" @click="openDraft(item.id)">继续写</button>
-            &nbsp;
-            <button class="danger" type="button" @click="removeDraft(item.id)">删除</button>
+            <button class="extra-link" type="button" @click="openArticle(item.id)">打开</button>
           </td>
         </tr>
       </tbody>

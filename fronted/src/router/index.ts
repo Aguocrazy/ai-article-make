@@ -31,7 +31,7 @@ const router = createRouter({
           path: 'drafts',
           name: 'drafts',
           component: () => import('@/views/DraftsView.vue'),
-          meta: { title: '我的草稿' },
+          meta: { title: '我的文章' },
         },
         {
           path: 'users',

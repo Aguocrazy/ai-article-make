@@ -4,9 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   articleStreamUrl,
   createArticle,
+  getMyArticle,
   type ArticleSseEvent,
 } from '@/api/article'
-import { drafts, saveDraft, type Draft } from '@/stores/studio'
+import { loadMyArticles } from '@/stores/articles'
 
 const STAGE_LABELS: Record<string, string> = {
   AGENT1_COMPLETE: '标题生成完成',
@@ -52,26 +53,21 @@ const form = reactive({
 
 const count = computed(() => form.topic.length)
 
-function applyDraft(draft: Draft) {
-  form.topic = draft.topic
-  form.type = draft.type
-  form.tone = draft.tone
-  form.length = draft.length
-  form.audience = draft.audience
-  form.extra = draft.extra
-  preview.value = draft.markdown
-  showExtra.value = Boolean(draft.extra)
-}
-
 watch(
-  () => route.query.draft,
-  (id) => {
-    if (typeof id !== 'string') {
+  () => route.query.article,
+  async (id) => {
+    if (typeof id !== 'string' || !id) {
       return
     }
-    const found = drafts.value.find((item) => item.id === id)
-    if (found) {
-      applyDraft(found)
+    try {
+      const article = await getMyArticle(Number(id))
+      form.topic = article.topic
+      preview.value = article.fullContent || article.content || ''
+      errorMessage.value = article.errorMessage || ''
+      progressMessage.value = article.status === 'COMPLETED' ? '已从账号打开' : (article.status || '')
+      tab.value = 'markdown'
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '打开文章失败'
     }
   },
   { immediate: true },
@@ -100,6 +96,7 @@ function resetForm() {
   showExtra.value = false
   const query = { ...route.query }
   delete query.draft
+  delete query.article
   void router.replace({ query })
 }
 
@@ -115,25 +112,6 @@ function parseSseEvent<T>(event: Event): ArticleSseEvent<T> | null {
   }
 }
 
-function persistDraft() {
-  const id = typeof route.query.draft === 'string' ? route.query.draft : crypto.randomUUID()
-  saveDraft({
-    id,
-    title: form.topic.slice(0, 18),
-    topic: form.topic,
-    type: form.type,
-    tone: form.tone,
-    length: form.length,
-    audience: form.audience,
-    extra: form.extra,
-    markdown: preview.value,
-    updatedAt: Date.now(),
-  })
-  if (route.query.draft !== id) {
-    void router.replace({ query: { ...route.query, draft: id } })
-  }
-}
-
 function finishSuccessfully() {
   if (streamSettled) {
     return
@@ -141,8 +119,8 @@ function finishSuccessfully() {
   streamSettled = true
   closeEventSource()
   progressMessage.value = STAGE_LABELS.ALL_COMPLETE ?? '全部完成'
-  persistDraft()
   generating.value = false
+  void loadMyArticles()
 }
 
 function finishWithError(messageOrEvent: unknown) {

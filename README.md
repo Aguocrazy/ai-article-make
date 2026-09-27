@@ -128,6 +128,10 @@ PEXELS_API_KEY=你的 Pexels Key
 
 也可通过同名环境变量传入。未配 Pexels Key 时配图走 `application.yml` 里的兜底图。
 
+若本机开了系统代理（常见为 Clash `127.0.0.1:7897`），JDK 会自动走代理访问 DashScope，TLS 握手常被对端直接掐断
+（`Remote host terminated the handshake`）。应用启动时会把 `*.aliyuncs.com` 加入 `nonProxyHosts` 直连阿里云。
+用 IDEA 启动时若仍报同样错误，检查 VM options 是否又覆盖了代理。
+
 应用通过实体 `User` / `Article` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名（如 `taskId`、`userAccount`）。实体上必须加 `@Table(camelToUnderline = false)`，否则 MyBatis-Flex 默认把驼峰转成下划线去查库（`taskId` → `task_id`），会报 column 不存在。`application.yml` 里同时关闭了 `map-underscore-to-camel-case`。
 
 ### 4. 启动后端
@@ -170,6 +174,7 @@ npm run dev
 | `/login` | 登录 |
 | `/register` | 注册 |
 | `/` | 登录后的工作台（写文章） |
+| `/drafts` | 我的文章（读库，按账号） |
 
 axios 携带 Cookie，与后端 Session 对齐；工作台用 `EventSource`（`withCredentials`）订阅生成进度。`/article` 代理超时为 0，避免 SSE 被 Vite 提前掐断。
 
@@ -240,6 +245,8 @@ throw new BusinessException(ErrorCode.OPERATION_ERROR, "说明");
 |------|------|------|------|
 | 创建生成任务 | POST | `/article/create` | 登录；返回 `taskId` |
 | 订阅生成进度 | GET | `/article/stream/{taskId}` | 登录且仅限任务所属用户；SSE |
+| 分页查询我的文章 | POST | `/article/list/page/vo` | 登录；只返回当前用户，`pageSize` 最大 50 |
+| 文章详情 | GET | `/article/get/{id}` | 登录；只能看自己的文章 |
 
 生成链路按「先拿任务号、后台慢慢跑、结果用 SSE 往前推」实现，避免一次 HTTP 请求卡到整篇文章写完。选题长度 1～500（会先 trim）。第 6 个并发任务会立即被拒绝，返回 `OPERATION_ERROR`（`50001`），提示「生成任务已满，请稍后重试」。
 
@@ -341,5 +348,6 @@ SSE 实现要点：
 
 已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，
 以及标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成的异步 SSE 生成（5 线程、零队列）。
+工作台「我的文章」通过 `/article/list/page/vo` 与 `/article/get/{id}` 读库，不再用本机 localStorage。
 
 扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。

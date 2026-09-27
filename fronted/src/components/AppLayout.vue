@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { currentUser, isAdmin, logout } from '@/stores/user'
-import { draftCount, drafts } from '@/stores/studio'
+import { articleCount, articleTitle, articles, loadMyArticles } from '@/stores/articles'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,7 +33,10 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  void loadMyArticles(4)
+})
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
@@ -67,8 +70,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <path d="M7 4h7l4 4v12H7V4Z" stroke="currentColor" stroke-width="1.7" />
           <path d="M14 4v4h4" stroke="currentColor" stroke-width="1.7" />
         </svg>
-        我的草稿
-        <span class="nav-badge">{{ draftCount }}</span>
+        我的文章
+        <span class="nav-badge">{{ articleCount }}</span>
       </RouterLink>
       <RouterLink v-if="isAdmin" class="nav-item" :class="{ 'is-active': route.name === 'users' }" to="/users">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -81,21 +84,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <div class="recent">
         <div class="recent-head">
           <span>最近创作</span>
-          <span>仅本机</span>
+          <span>账号内</span>
         </div>
         <button
-          v-for="item in drafts.slice(0, 4)"
+          v-for="item in articles.slice(0, 4)"
           :key="item.id"
           class="recent-item"
           type="button"
-          @click="router.push({ name: 'write', query: { draft: item.id } })"
+          @click="router.push({ name: 'write', query: { article: String(item.id) } })"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M7 4h10v16H7z" stroke="currentColor" stroke-width="1.6" />
           </svg>
-          <span>{{ item.title }}</span>
+          <span>{{ articleTitle(item) }}</span>
         </button>
-        <p v-if="drafts.length === 0" class="recent-item" style="cursor: default">还没有草稿</p>
+        <p v-if="articles.length === 0" class="recent-item" style="cursor: default">还没有文章</p>
       </div>
 
       <div class="inspire-card">

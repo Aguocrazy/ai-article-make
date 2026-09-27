@@ -1,4 +1,5 @@
-import { post } from '@/request'
+import { get, post } from '@/request'
+import type { PageResult } from '@/types/user'
 
 export interface ArticleTask {
   taskId: string
@@ -11,8 +12,42 @@ export interface ArticleSseEvent<T = unknown> {
   timestamp: number
 }
 
+export interface ArticleVO {
+  id: number
+  taskId: string
+  topic: string
+  mainTitle?: string
+  subTitle?: string
+  coverImage?: string
+  status: string
+  createTime?: string
+  completedTime?: string
+  updateTime?: string
+}
+
+export interface ArticleDetailVO extends ArticleVO {
+  outline?: string
+  content?: string
+  fullContent?: string
+  images?: string
+  errorMessage?: string
+}
+
 export function createArticle(topic: string) {
   return post<ArticleTask>('/article/create', { topic })
+}
+
+export function listMyArticles(payload: {
+  current?: number
+  pageSize?: number
+  topic?: string
+  status?: string
+}) {
+  return post<PageResult<ArticleVO>>('/article/list/page/vo', payload)
+}
+
+export function getMyArticle(id: number) {
+  return get<ArticleDetailVO>(`/article/get/${id}`)
 }
 
 export function articleStreamUrl(taskId: string) {

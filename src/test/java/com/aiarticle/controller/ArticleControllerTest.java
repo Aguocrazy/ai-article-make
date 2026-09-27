@@ -5,6 +5,7 @@ import com.aiarticle.model.dto.article.ArticleCreateRequest;
 import com.aiarticle.model.entity.User;
 import com.aiarticle.model.vo.ArticleTaskVO;
 import com.aiarticle.service.ArticleGenerationService;
+import com.aiarticle.service.ArticleService;
 import com.aiarticle.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,9 @@ class ArticleControllerTest {
     private ArticleGenerationService articleGenerationService;
 
     @Mock
+    private ArticleService articleService;
+
+    @Mock
     private UserService userService;
 
     @Mock
@@ -52,7 +56,7 @@ class ArticleControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new ArticleController(articleGenerationService, userService);
+        controller = new ArticleController(articleGenerationService, articleService, userService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
