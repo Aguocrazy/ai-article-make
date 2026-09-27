@@ -1,6 +1,7 @@
 package com.aiarticle.controller;
 
 import com.aiarticle.common.BaseResponse;
+import com.aiarticle.common.DeleteRequest;
 import com.aiarticle.model.dto.article.ArticleCreateRequest;
 import com.aiarticle.model.entity.User;
 import com.aiarticle.model.vo.ArticleTaskVO;
@@ -73,6 +74,20 @@ class ArticleControllerTest {
         assertEquals(0, response.getCode());
         assertSame(task, response.getData());
         verify(articleGenerationService).create(request, 99L);
+    }
+
+    @Test
+    void deleteMine_bindsCurrentLoginUserAndDelegates() {
+        User user = User.builder().id(99L).build();
+        DeleteRequest deleteRequest = new DeleteRequest();
+        deleteRequest.setId(8L);
+        when(userService.getLoginUser(servletRequest)).thenReturn(user);
+
+        BaseResponse<Boolean> response = controller.deleteMine(deleteRequest, servletRequest);
+
+        assertEquals(0, response.getCode());
+        assertEquals(true, response.getData());
+        verify(articleService).deleteMine(8L, 99L);
     }
 
     @Test

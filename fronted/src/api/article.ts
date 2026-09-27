@@ -13,7 +13,7 @@ export interface ArticleSseEvent<T = unknown> {
 }
 
 export interface ArticleVO {
-  id: number
+  id: string
   taskId: string
   topic: string
   articleType?: string
@@ -58,8 +58,12 @@ export function listMyArticles(payload: {
   return post<PageResult<ArticleVO>>('/article/list/page/vo', payload)
 }
 
-export function getMyArticle(id: number) {
-  return get<ArticleDetailVO>(`/article/get/${id}`)
+export function getMyArticle(id: string) {
+  return get<ArticleDetailVO>(`/article/get/${encodeURIComponent(id)}`)
+}
+
+export function deleteMyArticle(id: string) {
+  return post<boolean>('/article/delete', { id })
 }
 
 export function articleStreamUrl(taskId: string) {

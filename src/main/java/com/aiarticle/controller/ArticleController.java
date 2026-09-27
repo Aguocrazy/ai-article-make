@@ -1,6 +1,7 @@
 package com.aiarticle.controller;
 
 import com.aiarticle.common.BaseResponse;
+import com.aiarticle.common.DeleteRequest;
 import com.aiarticle.common.ResultUtils;
 import com.aiarticle.exception.ErrorCode;
 import com.aiarticle.exception.ThrowUtils;
@@ -98,5 +99,19 @@ public class ArticleController {
         ThrowUtils.throwIf(id == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(request);
         return ResultUtils.success(articleService.getMine(id, loginUser.getId()));
+    }
+
+    /**
+     * 删除当前用户的一篇文章。
+     */
+    @Operation(summary = "删除我的文章", description = "逻辑删除，仅能删除自己的文章")
+    @PostMapping("/delete")
+    public BaseResponse<Boolean> deleteMine(
+            @RequestBody DeleteRequest deleteRequest,
+            HttpServletRequest request) {
+        ThrowUtils.throwIf(deleteRequest == null || deleteRequest.getId() == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        articleService.deleteMine(deleteRequest.getId(), loginUser.getId());
+        return ResultUtils.success(true);
     }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { deleteMyArticle } from '@/api/article'
 import { articleCount, articleTitle, articles, articlesError, articlesLoading, loadMyArticles } from '@/stores/articles'
 
 const router = useRouter()
@@ -12,8 +13,20 @@ const STATUS_LABEL: Record<string, string> = {
   FAILED: '失败',
 }
 
-function openArticle(id: number) {
-  void router.push({ name: 'write', query: { article: String(id) } })
+function openArticle(id: string) {
+  void router.push({ name: 'write', query: { article: id } })
+}
+
+async function removeArticle(id: string, title: string) {
+  if (!confirm(`确认删除「${title}」？删除后列表里不再显示。`)) {
+    return
+  }
+  try {
+    await deleteMyArticle(id)
+    await loadMyArticles()
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : '删除失败')
+  }
 }
 
 function formatTime(value?: string) {
@@ -49,11 +62,20 @@ onMounted(() => {
           <td>{{ articleTitle(item) }}</td>
           <td>{{ STATUS_LABEL[item.status] || item.status }}</td>
           <td>{{ formatTime(item.updateTime || item.createTime) }}</td>
-          <td>
+          <td class="row-actions">
             <button class="extra-link" type="button" @click="openArticle(item.id)">打开</button>
+            <button class="danger" type="button" @click="removeArticle(item.id, articleTitle(item))">删除</button>
           </td>
         </tr>
       </tbody>
     </table>
   </section>
 </template>
+
+<style scoped>
+.row-actions {
+  display: flex;
+  gap: 12px;
+  white-space: nowrap;
+}
+</style>

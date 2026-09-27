@@ -1,5 +1,7 @@
 package com.aiarticle.model.vo;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 
 import java.io.Serial;
@@ -15,6 +17,10 @@ public class ArticleVO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /**
+     * 雪花 ID，序列化成字符串，避免前端 Number 丢精度后打不开 / 删不掉。
+     */
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
     private String taskId;

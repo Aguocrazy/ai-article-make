@@ -19,4 +19,9 @@ public interface ArticleService {
      * 查询当前用户的一篇文章详情。
      */
     ArticleDetailVO getMine(long id, long userId);
+
+    /**
+     * 逻辑删除当前用户的一篇文章。
+     */
+    void deleteMine(long id, long userId);
 }

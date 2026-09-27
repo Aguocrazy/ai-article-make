@@ -28,6 +28,9 @@ spring:
   ai:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:your-api-key-here}
+      chat:
+        options:
+          model: qwen3.8-27b
 
 # Pexels 图片检索
 image:

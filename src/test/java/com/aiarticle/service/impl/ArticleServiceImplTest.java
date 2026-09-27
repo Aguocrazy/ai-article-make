@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -80,5 +81,26 @@ class ArticleServiceImplTest {
         ArticleDetailVO detail = service.getMine(8L, 9L);
         assertEquals("# hi", detail.getFullContent());
         assertEquals("AI", detail.getTopic());
+    }
+
+    @Test
+    void deleteMine_removesOwnedArticle() {
+        when(articleMapper.selectOneById(8L)).thenReturn(
+                Article.builder().id(8L).userId(9L).build());
+        when(articleMapper.deleteById(8L)).thenReturn(1);
+
+        service.deleteMine(8L, 9L);
+
+        verify(articleMapper).deleteById(8L);
+    }
+
+    @Test
+    void deleteMine_rejectsAnotherUsersArticle() {
+        when(articleMapper.selectOneById(8L)).thenReturn(
+                Article.builder().id(8L).userId(10L).build());
+
+        BusinessException error = assertThrows(BusinessException.class, () -> service.deleteMine(8L, 9L));
+        assertEquals(ErrorCode.NOT_FOUND_ERROR.getCode(), error.getCode());
+        verify(articleMapper, never()).deleteById(any());
     }
 }

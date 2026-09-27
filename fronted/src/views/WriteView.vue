@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   articleStreamUrl,
   createArticle,
+  deleteMyArticle,
   getMyArticle,
   type ArticleSseEvent,
 } from '@/api/article'
@@ -107,15 +108,19 @@ function applySettings(article: {
 }
 
 const count = computed(() => form.topic.length)
+const openedArticleId = computed(() => {
+  const raw = route.query.article
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
 
 watch(
   () => route.query.article,
   async (id) => {
-    if (typeof id !== 'string' || !id) {
+    if (typeof id !== 'string' || !id.trim()) {
       return
     }
     try {
-      const article = await getMyArticle(Number(id))
+      const article = await getMyArticle(id.trim())
       form.topic = article.topic
       applySettings(article)
       showExtra.value = Boolean(form.extra)
@@ -124,7 +129,11 @@ watch(
       progressMessage.value = article.status === 'COMPLETED' ? '已从账号打开' : (article.status || '')
       tab.value = 'markdown'
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '打开文章失败'
+      const message = error instanceof Error ? error.message : '打开文章失败'
+      errorMessage.value = message === '请求数据不存在' ? '这篇文单不存在或已删除' : message
+      const query = { ...route.query }
+      delete query.article
+      void router.replace({ query })
     }
   },
   { immediate: true },
@@ -158,6 +167,22 @@ function resetForm() {
   delete query.draft
   delete query.article
   void router.replace({ query })
+}
+
+async function removeOpenedArticle() {
+  if (openedArticleId.value == null) {
+    return
+  }
+  if (!confirm('确认删除这篇文单？删除后列表里不再显示。')) {
+    return
+  }
+  try {
+    await deleteMyArticle(openedArticleId.value)
+    await loadMyArticles()
+    resetForm()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '删除失败'
+  }
 }
 
 function fillTopic(text: string) {
@@ -309,7 +334,18 @@ function downloadMarkdown() {
         <h1>让每一个灵感，落笔成篇。</h1>
         <p>给落笔一个主题，把脑海中的想法，变成有条理的 Markdown 文章。</p>
       </div>
-      <button class="btn-new" type="button" @click="resetForm">+ 新建文单</button>
+      <div class="hero-actions">
+        <button
+          v-if="openedArticleId"
+          class="danger"
+          type="button"
+          :disabled="generating"
+          @click="removeOpenedArticle"
+        >
+          删除这篇
+        </button>
+        <button class="btn-new" type="button" @click="resetForm">+ 新建文单</button>
+      </div>
     </div>
 
     <div class="stage">
@@ -493,6 +529,12 @@ function downloadMarkdown() {
 
 .gen-error {
   color: #9a4b3a;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .custom-input {

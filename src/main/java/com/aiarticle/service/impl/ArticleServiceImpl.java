@@ -69,6 +69,20 @@ public class ArticleServiceImpl implements ArticleService {
         return toDetailVo(article);
     }
 
+    @Override
+    public void deleteMine(long id, long userId) {
+        if (id <= 0 || userId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Article article = articleMapper.selectOneById(id);
+        if (article == null || !Objects.equals(article.getUserId(), userId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        if (articleMapper.deleteById(id) != 1) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "删除文章失败");
+        }
+    }
+
     private ArticleVO toListVo(Article article) {
         ArticleVO vo = new ArticleVO();
         BeanUtils.copyProperties(article, vo);
