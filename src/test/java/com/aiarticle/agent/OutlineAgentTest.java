@@ -7,6 +7,7 @@ import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.OutlineResult;
 import com.aiarticle.model.state.ArticleState.TitleResult;
 import com.aiarticle.util.AiModelClient;
+import com.aiarticle.util.WritingPromptBinder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -55,9 +56,8 @@ class OutlineAgentTest {
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(aiModelClient).callLlmWithStreaming(
                 promptCaptor.capture(), eq(streamHandler), eq(SseMessageTypeEnum.AGENT2_STREAMING));
-        assertEquals(PromptConstant.AGENT2_OUTLINE_PROMPT
-                .replace("{mainTitle}", "主标题")
-                .replace("{subTitle}", "副标题"), promptCaptor.getValue());
+        assertEquals(WritingPromptBinder.fill(PromptConstant.AGENT2_OUTLINE_PROMPT, state),
+                promptCaptor.getValue());
         assertSame(expected, state.getOutline());
         assertSame(state, result);
     }

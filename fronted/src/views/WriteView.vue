@@ -25,6 +25,7 @@ const STAGE_LABELS: Record<string, string> = {
 let eventSource: EventSource | null = null
 let streamSettled = false
 
+const CUSTOM = '自定义'
 const TOPICS = ['AI 与工作', '阅读习惯']
 const TYPES = ['深度解读', '教程指南', '观点评论', '故事叙述']
 const TONES = ['专业严谨', '轻松亲切', '犀利直接', '温暖治愈']
@@ -33,6 +34,7 @@ const LENGTHS = [
   { label: '中篇', words: 1000 },
   { label: '长篇', words: 2000 },
 ]
+const PRESET_WORDS = LENGTHS.map((item) => item.words)
 
 const route = useRoute()
 const router = useRouter()
@@ -45,11 +47,64 @@ const progressMessage = ref('')
 const form = reactive({
   topic: '',
   type: '深度解读',
+  customType: '',
   tone: '专业严谨',
-  length: 1000,
+  customTone: '',
+  length: 1000 as number | typeof CUSTOM,
+  customLength: 1500,
   audience: '',
   extra: '',
 })
+
+function resolveType() {
+  return form.type === CUSTOM ? form.customType.trim() : form.type
+}
+
+function resolveTone() {
+  return form.tone === CUSTOM ? form.customTone.trim() : form.tone
+}
+
+function resolveLength() {
+  if (form.length !== CUSTOM) {
+    return form.length
+  }
+  const value = Number(form.customLength)
+  if (!Number.isFinite(value) || value < 200 || value > 8000) {
+    return 1000
+  }
+  return Math.round(value)
+}
+
+function applySettings(article: {
+  articleType?: string
+  writingTone?: string
+  wordCount?: number
+  audience?: string
+  extraRequirement?: string
+}) {
+  if (article.articleType && TYPES.includes(article.articleType)) {
+    form.type = article.articleType
+    form.customType = ''
+  } else if (article.articleType) {
+    form.type = CUSTOM
+    form.customType = article.articleType
+  }
+  if (article.writingTone && TONES.includes(article.writingTone)) {
+    form.tone = article.writingTone
+    form.customTone = ''
+  } else if (article.writingTone) {
+    form.tone = CUSTOM
+    form.customTone = article.writingTone
+  }
+  if (article.wordCount && PRESET_WORDS.includes(article.wordCount)) {
+    form.length = article.wordCount
+  } else if (article.wordCount) {
+    form.length = CUSTOM
+    form.customLength = article.wordCount
+  }
+  form.audience = article.audience || ''
+  form.extra = article.extraRequirement || ''
+}
 
 const count = computed(() => form.topic.length)
 
@@ -62,6 +117,8 @@ watch(
     try {
       const article = await getMyArticle(Number(id))
       form.topic = article.topic
+      applySettings(article)
+      showExtra.value = Boolean(form.extra)
       preview.value = article.fullContent || article.content || ''
       errorMessage.value = article.errorMessage || ''
       progressMessage.value = article.status === 'COMPLETED' ? '已从账号打开' : (article.status || '')
@@ -88,8 +145,11 @@ function resetForm() {
   progressMessage.value = ''
   form.topic = ''
   form.type = '深度解读'
+  form.customType = ''
   form.tone = '专业严谨'
+  form.customTone = ''
   form.length = 1000
+  form.customLength = 1500
   form.audience = ''
   form.extra = ''
   preview.value = ''
@@ -196,7 +256,14 @@ async function generate() {
   generating.value = true
   tab.value = 'markdown'
   try {
-    const { taskId } = await createArticle(form.topic.trim())
+    const { taskId } = await createArticle({
+      topic: form.topic.trim(),
+      articleType: resolveType(),
+      writingTone: resolveTone(),
+      wordCount: resolveLength(),
+      audience: form.audience.trim(),
+      extraRequirement: form.extra.trim(),
+    })
     if (streamSettled) {
       return
     }
@@ -279,8 +346,16 @@ function downloadMarkdown() {
           <div class="select-wrap">
             <select v-model="form.type">
               <option v-for="item in TYPES" :key="item">{{ item }}</option>
+              <option :value="CUSTOM">{{ CUSTOM }}</option>
             </select>
           </div>
+          <input
+            v-if="form.type === CUSTOM"
+            v-model="form.customType"
+            class="soft-input custom-input"
+            maxlength="64"
+            placeholder="例如：行业周报、产品评测"
+          />
         </div>
 
         <div class="field">
@@ -288,8 +363,16 @@ function downloadMarkdown() {
           <div class="select-wrap">
             <select v-model="form.tone">
               <option v-for="item in TONES" :key="item">{{ item }}</option>
+              <option :value="CUSTOM">{{ CUSTOM }}</option>
             </select>
           </div>
+          <input
+            v-if="form.tone === CUSTOM"
+            v-model="form.customTone"
+            class="soft-input custom-input"
+            maxlength="64"
+            placeholder="例如：幽默吐槽、冷静克制"
+          />
         </div>
 
         <div class="field">
@@ -306,7 +389,26 @@ function downloadMarkdown() {
               <b>{{ item.label }}</b>
               <small>约 {{ item.words.toLocaleString() }} 字</small>
             </button>
+            <button
+              class="length-btn"
+              :class="{ 'is-active': form.length === CUSTOM }"
+              type="button"
+              @click="form.length = CUSTOM"
+            >
+              <b>{{ CUSTOM }}</b>
+              <small>200–8000 字</small>
+            </button>
           </div>
+          <input
+            v-if="form.length === CUSTOM"
+            v-model.number="form.customLength"
+            class="soft-input custom-input"
+            type="number"
+            min="200"
+            max="8000"
+            step="100"
+            placeholder="输入目标字数"
+          />
         </div>
 
         <div class="field">
@@ -391,6 +493,14 @@ function downloadMarkdown() {
 
 .gen-error {
   color: #9a4b3a;
+}
+
+.custom-input {
+  margin-top: 8px;
+}
+
+.length-grid {
+  grid-template-columns: repeat(2, 1fr);
 }
 </style>
 

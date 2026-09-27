@@ -1,5 +1,6 @@
 package com.aiarticle.service;
 
+import com.aiarticle.model.dto.article.ArticleCreateRequest;
 import com.aiarticle.model.vo.ArticleTaskVO;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -11,11 +12,11 @@ public interface ArticleGenerationService {
     /**
      * 创建文章生成任务。
      *
-     * @param topic  文章选题
-     * @param userId 当前用户 ID
+     * @param request 选题与创作设定
+     * @param userId  当前用户 ID
      * @return 任务信息
      */
-    ArticleTaskVO create(String topic, long userId);
+    ArticleTaskVO create(ArticleCreateRequest request, long userId);
 
     /**
      * 订阅文章生成进度。

@@ -65,14 +65,14 @@ class ArticleControllerTest {
         User user = User.builder().id(99L).build();
         ArticleTaskVO task = new ArticleTaskVO("task-99");
         when(userService.getLoginUser(servletRequest)).thenReturn(user);
-        when(articleGenerationService.create("主题", 99L)).thenReturn(task);
+        ArticleCreateRequest request = createRequest("主题");
+        when(articleGenerationService.create(request, 99L)).thenReturn(task);
 
-        BaseResponse<ArticleTaskVO> response =
-                controller.create(new ArticleCreateRequest("主题"), servletRequest);
+        BaseResponse<ArticleTaskVO> response = controller.create(request, servletRequest);
 
         assertEquals(0, response.getCode());
         assertSame(task, response.getData());
-        verify(articleGenerationService).create("主题", 99L);
+        verify(articleGenerationService).create(request, 99L);
     }
 
     @Test
@@ -103,7 +103,7 @@ class ArticleControllerTest {
     void createMappingAcceptsPostJsonAndBindsDtoThroughSpringMvc() throws Exception {
         User user = User.builder().id(101L).build();
         when(userService.getLoginUser(any(HttpServletRequest.class))).thenReturn(user);
-        when(articleGenerationService.create("Spring MVC 主题", 101L))
+        when(articleGenerationService.create(createRequest("Spring MVC 主题"), 101L))
                 .thenReturn(new ArticleTaskVO("task-101"));
 
         mockMvc.perform(post("/article/create")
@@ -117,7 +117,7 @@ class ArticleControllerTest {
                 .andExpect(jsonPath("$.data.taskId").value("task-101"));
 
         verify(userService).getLoginUser(any(HttpServletRequest.class));
-        verify(articleGenerationService).create("Spring MVC 主题", 101L);
+        verify(articleGenerationService).create(createRequest("Spring MVC 主题"), 101L);
     }
 
     @Test
@@ -150,5 +150,9 @@ class ArticleControllerTest {
         mockMvc.perform(get("/article/stream/task-102")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotAcceptable());
+    }
+
+    private static ArticleCreateRequest createRequest(String topic) {
+        return new ArticleCreateRequest(topic, null, null, null, null, null);
     }
 }

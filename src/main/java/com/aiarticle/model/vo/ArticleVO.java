@@ -21,6 +21,16 @@ public class ArticleVO implements Serializable {
 
     private String topic;
 
+    private String articleType;
+
+    private String writingTone;
+
+    private Integer wordCount;
+
+    private String audience;
+
+    private String extraRequirement;
+
     private String mainTitle;
 
     private String subTitle;

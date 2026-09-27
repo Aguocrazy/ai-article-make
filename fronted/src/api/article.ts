@@ -16,6 +16,11 @@ export interface ArticleVO {
   id: number
   taskId: string
   topic: string
+  articleType?: string
+  writingTone?: string
+  wordCount?: number
+  audience?: string
+  extraRequirement?: string
   mainTitle?: string
   subTitle?: string
   coverImage?: string
@@ -33,8 +38,15 @@ export interface ArticleDetailVO extends ArticleVO {
   errorMessage?: string
 }
 
-export function createArticle(topic: string) {
-  return post<ArticleTask>('/article/create', { topic })
+export function createArticle(payload: {
+  topic: string
+  articleType: string
+  writingTone: string
+  wordCount: number
+  audience: string
+  extraRequirement: string
+}) {
+  return post<ArticleTask>('/article/create', payload)
 }
 
 export function listMyArticles(payload: {

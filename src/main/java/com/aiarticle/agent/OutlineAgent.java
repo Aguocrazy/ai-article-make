@@ -8,6 +8,7 @@ import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.OutlineResult;
 import com.aiarticle.model.state.ArticleState.TitleResult;
 import com.aiarticle.util.AiModelClient;
+import com.aiarticle.util.WritingPromptBinder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -39,9 +40,7 @@ public class OutlineAgent {
                 ErrorCode.PARAMS_ERROR, "标题结果不能为空");
         ThrowUtils.throwIf(streamHandler == null, ErrorCode.PARAMS_ERROR, "流式处理器不能为空");
 
-        String prompt = PromptConstant.AGENT2_OUTLINE_PROMPT
-                .replace("{mainTitle}", title.getMainTitle())
-                .replace("{subTitle}", title.getSubTitle());
+        String prompt = WritingPromptBinder.fill(PromptConstant.AGENT2_OUTLINE_PROMPT, state);
         String raw = aiModelClient.callLlmWithStreaming(
                 prompt, streamHandler, SseMessageTypeEnum.AGENT2_STREAMING);
         OutlineResult outline = aiModelClient.parseJsonResponse(raw, OutlineResult.class, "大纲");

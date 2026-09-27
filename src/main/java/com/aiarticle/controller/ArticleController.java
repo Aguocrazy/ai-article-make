@@ -58,7 +58,7 @@ public class ArticleController {
         ThrowUtils.throwIf(articleCreateRequest == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(request);
         ArticleTaskVO task = articleGenerationService.create(
-                articleCreateRequest.topic(), loginUser.getId());
+                articleCreateRequest, loginUser.getId());
         return ResultUtils.success(task);
     }
 

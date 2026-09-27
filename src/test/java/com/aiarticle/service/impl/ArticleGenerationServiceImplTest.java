@@ -3,6 +3,7 @@ package com.aiarticle.service.impl;
 import com.aiarticle.exception.BusinessException;
 import com.aiarticle.exception.ErrorCode;
 import com.aiarticle.mapper.ArticleMapper;
+import com.aiarticle.model.dto.article.ArticleCreateRequest;
 import com.aiarticle.model.entity.Article;
 import com.aiarticle.model.vo.ArticleTaskVO;
 import com.aiarticle.service.SseEmitterService;
@@ -59,13 +60,18 @@ class ArticleGenerationServiceImplTest {
         when(articleMapper.insert(any(Article.class))).thenReturn(1);
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
 
-        ArticleTaskVO result = service.create("  人工智能写作  ", 42L);
+        ArticleTaskVO result = service.create(request("  人工智能写作  "), 42L);
 
         ArgumentCaptor<Article> articleCaptor = ArgumentCaptor.forClass(Article.class);
         verify(articleMapper).insert(articleCaptor.capture());
         Article article = articleCaptor.getValue();
         assertEquals("人工智能写作", article.getTopic());
         assertEquals(42L, article.getUserId());
+        assertEquals("深度解读", article.getArticleType());
+        assertEquals("专业严谨", article.getWritingTone());
+        assertEquals(1000, article.getWordCount());
+        assertEquals("通用读者", article.getAudience());
+        assertEquals("无", article.getExtraRequirement());
         assertEquals("PENDING", article.getStatus());
         assertNotNull(article.getTaskId());
         assertFalse(article.getTaskId().isBlank());
@@ -80,8 +86,8 @@ class ArticleGenerationServiceImplTest {
     void create_generatesUniqueTaskIds() {
         when(articleMapper.insert(any(Article.class))).thenReturn(1);
 
-        ArticleTaskVO first = service.create("主题", 1L);
-        ArticleTaskVO second = service.create("主题", 1L);
+        ArticleTaskVO first = service.create(request("主题"), 1L);
+        ArticleTaskVO second = service.create(request("主题"), 1L);
 
         assertFalse(first.taskId().equals(second.taskId()));
     }
@@ -91,7 +97,7 @@ class ArticleGenerationServiceImplTest {
         String topic = "x".repeat(500);
         when(articleMapper.insert(any(Article.class))).thenReturn(1);
 
-        service.create(topic, 1L);
+        service.create(request(topic), 1L);
 
         ArgumentCaptor<Article> captor = ArgumentCaptor.forClass(Article.class);
         verify(articleMapper).insert(captor.capture());
@@ -101,10 +107,10 @@ class ArticleGenerationServiceImplTest {
     @Test
     void create_rejectsInvalidTopicsAndUserIds() {
         assertParamsError(() -> service.create(null, 1L));
-        assertParamsError(() -> service.create("  ", 1L));
-        assertParamsError(() -> service.create("x".repeat(501), 1L));
-        assertParamsError(() -> service.create("主题", 0L));
-        assertParamsError(() -> service.create("主题", -1L));
+        assertParamsError(() -> service.create(request("  "), 1L));
+        assertParamsError(() -> service.create(request("x".repeat(501)), 1L));
+        assertParamsError(() -> service.create(request("主题"), 0L));
+        assertParamsError(() -> service.create(request("主题"), -1L));
         verify(articleMapper, never()).insert(any());
     }
 
@@ -113,7 +119,7 @@ class ArticleGenerationServiceImplTest {
         when(articleMapper.insert(any(Article.class))).thenReturn(0);
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.create("主题", 1L));
+                () -> service.create(request("主题"), 1L));
 
         assertEquals(ErrorCode.OPERATION_ERROR.getCode(), exception.getCode());
         verify(articleGenerationExecutor, never()).execute(any(Runnable.class));
@@ -126,7 +132,7 @@ class ArticleGenerationServiceImplTest {
                 .when(articleGenerationExecutor).execute(any(Runnable.class));
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.create("主题", 1L));
+                () -> service.create(request("主题"), 1L));
 
         assertEquals(ErrorCode.OPERATION_ERROR.getCode(), exception.getCode());
         assertEquals("生成任务已满，请稍后重试", exception.getMessage());
@@ -143,7 +149,7 @@ class ArticleGenerationServiceImplTest {
                 .when(articleGenerationExecutor).execute(any(Runnable.class));
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.create("主题", 1L));
+                () -> service.create(request("主题"), 1L));
 
         assertEquals(ErrorCode.OPERATION_ERROR.getCode(), exception.getCode());
         assertEquals("生成任务提交失败，请稍后重试", exception.getMessage());
@@ -158,7 +164,7 @@ class ArticleGenerationServiceImplTest {
         when(articleMapper.update(any(Article.class))).thenThrow(new IllegalStateException("update failed"));
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.create("主题", 1L));
+                () -> service.create(request("主题"), 1L));
 
         assertEquals("生成任务已满，请稍后重试", exception.getMessage());
     }
@@ -211,6 +217,27 @@ class ArticleGenerationServiceImplTest {
         assertParamsError(() -> service.subscribe("task", 0L));
         assertParamsError(() -> service.subscribe("task", -1L));
         verify(articleMapper, never()).selectOneByQuery(any());
+    }
+
+    @Test
+    void create_persistsSubmittedWritingSettings() {
+        when(articleMapper.insert(any(Article.class))).thenReturn(1);
+
+        service.create(new ArticleCreateRequest(
+                "选题", "教程指南", "轻松亲切", 2000, "产品经理", "少用术语"), 1L);
+
+        ArgumentCaptor<Article> captor = ArgumentCaptor.forClass(Article.class);
+        verify(articleMapper).insert(captor.capture());
+        Article article = captor.getValue();
+        assertEquals("教程指南", article.getArticleType());
+        assertEquals("轻松亲切", article.getWritingTone());
+        assertEquals(2000, article.getWordCount());
+        assertEquals("产品经理", article.getAudience());
+        assertEquals("少用术语", article.getExtraRequirement());
+    }
+
+    private static ArticleCreateRequest request(String topic) {
+        return new ArticleCreateRequest(topic, null, null, null, null, null);
     }
 
     private void assertParamsError(Runnable action) {

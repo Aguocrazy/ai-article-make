@@ -53,6 +53,31 @@ public class Article implements Serializable {
     private String topic;
 
     /**
+     * 文章类型
+     */
+    private String articleType;
+
+    /**
+     * 写作语气
+     */
+    private String writingTone;
+
+    /**
+     * 目标字数
+     */
+    private Integer wordCount;
+
+    /**
+     * 目标读者
+     */
+    private String audience;
+
+    /**
+     * 补充写作要求
+     */
+    private String extraRequirement;
+
+    /**
      * 主标题
      */
     private String mainTitle;

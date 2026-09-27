@@ -6,6 +6,7 @@ import com.aiarticle.exception.ThrowUtils;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.TitleResult;
 import com.aiarticle.util.AiModelClient;
+import com.aiarticle.util.WritingPromptBinder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -28,7 +29,7 @@ public class TitleAgent {
     public ArticleState generate(ArticleState state) {
         ThrowUtils.throwIf(state == null || !StringUtils.hasText(state.getTopic()),
                 ErrorCode.PARAMS_ERROR, "选题不能为空");
-        String prompt = PromptConstant.AGENT1_TITLE_PROMPT.replace("{topic}", state.getTopic());
+        String prompt = WritingPromptBinder.fill(PromptConstant.AGENT1_TITLE_PROMPT, state);
         String raw = aiModelClient.callLlm(prompt);
         TitleResult title = aiModelClient.parseJsonResponse(raw, TitleResult.class, "标题");
         state.setTitle(title);

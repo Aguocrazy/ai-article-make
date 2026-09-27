@@ -11,14 +11,19 @@ public interface PromptConstant {
     String AGENT1_TITLE_PROMPT = """
             你是一位爆款文章标题专家,擅长创作吸引人的标题。
             
-            根据以下选题,生成一个爆款文章标题(主标题 + 副标题):
+            根据以下选题和创作设定,生成一个爆款文章标题(主标题 + 副标题):
             选题：{topic}
+            文章类型：{articleType}
+            写作语气：{writingTone}
+            目标读者：{audience}
+            目标篇幅：约 {wordCount} 字
+            补充要求：{extraRequirement}
             
             要求:
             1. 主标题要包含数字、情绪化词汇,吸引眼球
             2. 副标题要补充说明,增强吸引力
             3. 标题要简洁有力,不超过30字
-            4. 符合新媒体爆款文章的风格
+            4. 标题风格符合文章类型、写作语气，并照顾目标读者
             
             请直接返回 JSON 格式,不要有其他内容:
             {
@@ -33,15 +38,21 @@ public interface PromptConstant {
     String AGENT2_OUTLINE_PROMPT = """
             你是一位专业的文章策划师,擅长设计文章结构。
             
-            根据以下标题,生成文章大纲:
+            根据以下标题和创作设定,生成文章大纲:
             主标题：{mainTitle}
             副标题：{subTitle}
+            文章类型：{articleType}
+            写作语气：{writingTone}
+            目标读者：{audience}
+            目标篇幅：约 {wordCount} 字
+            补充要求：{extraRequirement}
             
             要求:
             1. 大纲要有清晰的逻辑结构
             2. 包含开头引入、核心观点(3-5个)、结尾升华
             3. 每个章节要有明确的标题和核心要点(2-3个)
-            4. 适合2000字左右的文章
+            4. 结构与详略适合约 {wordCount} 字的文章
+            5. 口吻与章节安排符合文章类型、写作语气和目标读者
             
             请直接返回 JSON 格式,不要有其他内容:
             {
@@ -61,18 +72,24 @@ public interface PromptConstant {
     String AGENT3_CONTENT_PROMPT = """
             你是一位资深的内容创作者,擅长撰写优质文章。
             
-            根据以下大纲,创作文章正文:
+            根据以下大纲和创作设定,创作文章正文:
             主标题：{mainTitle}
             副标题：{subTitle}
+            文章类型：{articleType}
+            写作语气：{writingTone}
+            目标读者：{audience}
+            目标篇幅：约 {wordCount} 字
+            补充要求：{extraRequirement}
             大纲：
             {outline}
             
             要求:
-            1. 内容要充实,每个章节300-400字
-            2. 语言流畅,富有感染力
+            1. 全文总篇幅控制在约 {wordCount} 字,按章节合理分配
+            2. 语言符合「{writingTone}」,面向「{audience}」,体裁为「{articleType}」
             3. 适当使用金句,增强可读性
             4. 添加过渡句,确保逻辑连贯
             5. 使用 Markdown 格式,章节使用 ## 标题
+            6. 若补充要求不是「无」,必须遵守补充要求
             
             请直接返回 Markdown 格式的正文内容,不要有其他内容。
             """;

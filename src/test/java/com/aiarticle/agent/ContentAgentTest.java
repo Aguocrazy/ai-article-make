@@ -8,7 +8,7 @@ import com.aiarticle.model.state.ArticleState.OutlineResult;
 import com.aiarticle.model.state.ArticleState.OutlineSection;
 import com.aiarticle.model.state.ArticleState.TitleResult;
 import com.aiarticle.util.AiModelClient;
-import com.aiarticle.util.GsonUtils;
+import com.aiarticle.util.WritingPromptBinder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -52,11 +52,8 @@ class ContentAgentTest {
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(aiModelClient).callLlmWithStreaming(
                 promptCaptor.capture(), eq(streamHandler), eq(SseMessageTypeEnum.AGENT3_STREAMING));
-        String expectedPrompt = PromptConstant.AGENT3_CONTENT_PROMPT
-                .replace("{mainTitle}", "主标题")
-                .replace("{subTitle}", "副标题")
-                .replace("{outline}", GsonUtils.toJson(state.getOutline()));
-        assertEquals(expectedPrompt, promptCaptor.getValue());
+        assertEquals(WritingPromptBinder.fill(PromptConstant.AGENT3_CONTENT_PROMPT, state),
+                promptCaptor.getValue());
         assertEquals(markdown, state.getContent());
         assertSame(state, result);
     }

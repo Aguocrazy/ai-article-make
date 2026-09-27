@@ -6,11 +6,14 @@ import com.aiarticle.constant.ArticleConstant;
 import com.aiarticle.exception.BusinessException;
 import com.aiarticle.exception.ErrorCode;
 import com.aiarticle.mapper.ArticleMapper;
+import com.aiarticle.model.dto.article.ArticleCreateRequest;
 import com.aiarticle.model.entity.Article;
+import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.vo.ArticleTaskVO;
 import com.aiarticle.service.ArticleGenerationService;
 import com.aiarticle.service.SseEmitterService;
 import com.aiarticle.task.ArticleGenerationTask;
+import com.aiarticle.util.WritingPromptBinder;
 import com.mybatisflex.core.query.QueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -53,13 +56,27 @@ public class ArticleGenerationServiceImpl implements ArticleGenerationService {
     }
 
     @Override
-    public ArticleTaskVO create(String topic, long userId) {
-        String normalizedTopic = validateAndNormalize(topic, userId);
+    public ArticleTaskVO create(ArticleCreateRequest request, long userId) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        String normalizedTopic = validateAndNormalize(request.topic(), userId);
+        ArticleState settings = new ArticleState();
+        settings.setArticleType(request.articleType());
+        settings.setWritingTone(request.writingTone());
+        settings.setWordCount(request.wordCount());
+        settings.setAudience(request.audience());
+        settings.setExtraRequirement(request.extraRequirement());
         String taskId = IdUtil.fastSimpleUUID();
         Article article = Article.builder()
                 .taskId(taskId)
                 .userId(userId)
                 .topic(normalizedTopic)
+                .articleType(WritingPromptBinder.articleType(settings))
+                .writingTone(WritingPromptBinder.writingTone(settings))
+                .wordCount(WritingPromptBinder.wordCount(settings))
+                .audience(WritingPromptBinder.audience(settings))
+                .extraRequirement(WritingPromptBinder.extraRequirement(settings))
                 .status(ArticleConstant.STATUS_PENDING)
                 .build();
         if (articleMapper.insert(article) != 1) {

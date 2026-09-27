@@ -103,9 +103,10 @@ brew services start redis
 ```bash
 mysql -u root -p < sql/init_user.sql
 mysql -u root -p ai_passage_creator < sql/003_create_article.sql
+mysql -u root -p ai_passage_creator < sql/004_add_article_writing_settings.sql
 ```
 
-`init_user.sql` 会建库 `ai_passage_creator`、建 `user` 表并插入测试账号。`003_create_article.sql` 建 `article` 表。变更履历见 [`sql/CHANGELOG.md`](sql/CHANGELOG.md)。已执行过的脚本不要改，增量用新编号脚本。
+`init_user.sql` 会建库 `ai_passage_creator`、建 `user` 表并插入测试账号。`003_create_article.sql` 建 `article` 表。`004_add_article_writing_settings.sql` 为已有 `article` 表补上创作设定字段。变更履历见 [`sql/CHANGELOG.md`](sql/CHANGELOG.md)。已执行过的脚本不要改，增量用新编号脚本。
 
 预置账号（明文密码均为 `12345678`）：
 
@@ -256,7 +257,7 @@ flowchart TB
 
   subgraph iface["1. 接口层 Interface Layer"]
     direction LR
-    Create["POST /article/create<br/>提交选题"]
+    Create["POST /article/create<br/>提交选题与创作设定"]
     TaskId["返回 taskId 给前端"]
     Create --> TaskId
   end
@@ -292,7 +293,7 @@ flowchart TB
 
 流程简述：
 
-1. 工作台 `POST /article/create` 只提交选题，接口马上返回 `taskId`，请求结束。
+1. 工作台 `POST /article/create` 提交选题和创作设定（类型、语气、篇幅、读者、补充要求），接口马上返回 `taskId`，请求结束。设定会落库，并写入标题 / 大纲 / 正文提示词。
 2. 后台固定 **5 线程、队列容量 0** 的执行器（`AbortPolicy`）立刻跑任务；满载时不排队，第 6 个任务立即失败。
 3. 每个任务内部串行跑智能体：标题 → 大纲 → 正文 → 分析图 → 配图 → 图文合成落库。
 4. 前端用同一个 `taskId` 打开 `EventSource` 挂上 `GET /article/stream/{taskId}`；标题、流式正文、图片等到一段就往这个通道推一段，全部完成后关闭连接。
@@ -319,9 +320,9 @@ SSE 实现要点：
 
 当前已实现五步串行智能体，外加图文合成：
 
-- `TitleAgent`：用 `topic` 非流式生成标题，写入 `ArticleState.title`
-- `OutlineAgent`：读取标题并流式生成大纲，写入 `ArticleState.outline`
-- `ContentAgent`：读取标题和大纲并流式生成 Markdown 正文，写入 `ArticleState.content`
+- `TitleAgent`：用选题与创作设定非流式生成标题，写入 `ArticleState.title`
+- `OutlineAgent`：读取标题和创作设定并流式生成大纲，写入 `ArticleState.outline`
+- `ContentAgent`：读取标题、大纲和创作设定并流式生成 Markdown 正文，写入 `ArticleState.content`
 - `ImageRequirementAgent`：读取主标题和正文，非流式分析配图需求，写入 `ArticleState.imageRequirements`
 - `ImageAgent`：逐项调用 `ImageSearchService` 检索图片，写入 `ArticleState.images`；封面同步写入 `coverImage`
 - `ArticleMergeAgent`：逐行扫描正文，在匹配的 `##` 章节标题后插入 Markdown 图片，写入 `ArticleState.fullContent`

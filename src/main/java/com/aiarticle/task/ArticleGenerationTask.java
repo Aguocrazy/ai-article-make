@@ -58,6 +58,11 @@ public class ArticleGenerationTask {
         ArticleState state = new ArticleState();
         state.setTaskId(taskId);
         state.setTopic(article.getTopic());
+        state.setArticleType(article.getArticleType());
+        state.setWritingTone(article.getWritingTone());
+        state.setWordCount(article.getWordCount());
+        state.setAudience(article.getAudience());
+        state.setExtraRequirement(article.getExtraRequirement());
 
         try {
             article.setStatus(ArticleConstant.STATUS_PROCESSING);

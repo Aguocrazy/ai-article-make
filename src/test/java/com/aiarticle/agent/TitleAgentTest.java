@@ -5,6 +5,7 @@ import com.aiarticle.exception.BusinessException;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.TitleResult;
 import com.aiarticle.util.AiModelClient;
+import com.aiarticle.util.WritingPromptBinder;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +46,7 @@ class TitleAgentTest {
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(aiModelClient).callLlm(promptCaptor.capture());
         String prompt = promptCaptor.getValue();
-        assertEquals(PromptConstant.AGENT1_TITLE_PROMPT.replace("{topic}", "AI 如何改变工作"), prompt);
+        assertEquals(WritingPromptBinder.fill(PromptConstant.AGENT1_TITLE_PROMPT, state), prompt);
         verify(aiModelClient).parseJsonResponse(
                 "{\"mainTitle\":\"主标题\",\"subTitle\":\"副标题\"}", TitleResult.class, "标题");
         assertSame(expected, result.getTitle());

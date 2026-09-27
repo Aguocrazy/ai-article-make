@@ -8,7 +8,7 @@ import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.OutlineResult;
 import com.aiarticle.model.state.ArticleState.TitleResult;
 import com.aiarticle.util.AiModelClient;
-import com.aiarticle.util.GsonUtils;
+import com.aiarticle.util.WritingPromptBinder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -45,10 +45,7 @@ public class ContentAgent {
                 ErrorCode.PARAMS_ERROR, "大纲结果不能为空");
         ThrowUtils.throwIf(streamHandler == null, ErrorCode.PARAMS_ERROR, "流式处理器不能为空");
 
-        String prompt = PromptConstant.AGENT3_CONTENT_PROMPT
-                .replace("{mainTitle}", title.getMainTitle())
-                .replace("{subTitle}", title.getSubTitle())
-                .replace("{outline}", GsonUtils.toJson(outline));
+        String prompt = WritingPromptBinder.fill(PromptConstant.AGENT3_CONTENT_PROMPT, state);
         String content = aiModelClient.callLlmWithStreaming(
                 prompt, streamHandler, SseMessageTypeEnum.AGENT3_STREAMING);
         state.setContent(content);

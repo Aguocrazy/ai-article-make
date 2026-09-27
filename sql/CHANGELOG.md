@@ -4,6 +4,7 @@
 
 | 序号 | 日期 | 脚本文件 | 说明 | 状态 |
 |------|------|----------|------|------|
+| 4 | 2026-09-27 | [004_add_article_writing_settings.sql](004_add_article_writing_settings.sql) | 文章表增加创作设定：articleType / writingTone / wordCount / audience / extraRequirement | ✅ 已执行 |
 | 3 | 2026-09-19 | [003_create_article.sql](003_create_article.sql) | 创建 `article` 文章表（任务 ID、选题、正文、配图、生成状态） | ✅ 已执行 |
 | 2 | 2026-09-16 | [init_user.sql](init_user.sql) | 创建 `user` 用户表（含唯一索引 uk_userAccount、普通索引 idx_userName），插入 3 条测试数据（admin/user/test，密码均为 12345678） | ✅ 已执行 |
 | 1 | 2026-09-10 | （命令行） | 创建数据库 `ai_passage_creator`（utf8mb4_unicode_ci） | ✅ 已执行 |
@@ -11,6 +12,20 @@
 ---
 
 ## 详细变更记录
+
+### #4 - 004_add_article_writing_settings.sql（2026-09-27）
+
+**变更内容：** 为 `article` 增加创作设定字段，供提示词使用。
+
+**回滚脚本：**
+```sql
+ALTER TABLE article
+  DROP COLUMN extraRequirement,
+  DROP COLUMN audience,
+  DROP COLUMN wordCount,
+  DROP COLUMN writingTone,
+  DROP COLUMN articleType;
+```
 
 ### #3 - 003_create_article.sql（2026-09-19）
 
