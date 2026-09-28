@@ -34,6 +34,7 @@ class HttpProxyBypassTest {
         String hosts = System.getProperty("https.nonProxyHosts");
         assertTrue(hosts.contains("localhost"));
         assertTrue(hosts.contains("aliyuncs.com"));
+        assertTrue(hosts.contains("myqcloud.com"));
     }
 
     private void snapshot() {

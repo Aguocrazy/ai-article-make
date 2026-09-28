@@ -125,9 +125,17 @@ MySQL 账号密码写在 `src/main/resources/application.yml`。通义千问与 
 ```properties
 DASHSCOPE_API_KEY=你的通义千问 Key
 PEXELS_API_KEY=你的 Pexels Key
+COS_SECRET_ID=腾讯云 SecretId
+COS_SECRET_KEY=腾讯云 SecretKey
+COS_BUCKET=存储桶名称（如 example-1250000000）
+COS_REGION=ap-guangzhou
+# 可选
+# COS_KEY_PREFIX=articles
+# COS_CUSTOM_DOMAIN=cdn.example.com
 ```
 
 也可通过同名环境变量传入。未配 Pexels Key 时配图走 `application.yml` 里的兜底图。
+未配 COS 密钥时应用仍可启动，调用 `CosFileClient` 上传/下载会提示未配置。接入说明见 [COS Java SDK 快速入门](https://cloud.tencent.com/document/product/436/10199)。
 
 若本机开了系统代理（常见为 Clash `127.0.0.1:7897`），JDK 会自动走代理访问 DashScope，TLS 握手常被对端直接掐断
 （`Remote host terminated the handshake`）。应用启动时会把 `*.aliyuncs.com` 加入 `nonProxyHosts` 直连阿里云。

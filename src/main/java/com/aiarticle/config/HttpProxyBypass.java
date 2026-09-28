@@ -9,7 +9,8 @@ package com.aiarticle.config;
  */
 public final class HttpProxyBypass {
 
-    private static final String ALIYUN_HOSTS = "*.aliyuncs.com|aliyuncs.com|dashscope.aliyuncs.com";
+    private static final String DIRECT_HOSTS =
+            "*.aliyuncs.com|aliyuncs.com|dashscope.aliyuncs.com|*.myqcloud.com|myqcloud.com";
 
     private HttpProxyBypass() {
     }
@@ -22,9 +23,15 @@ public final class HttpProxyBypass {
 
     private static void appendNonProxy(String key) {
         String current = System.getProperty(key, "");
-        if (current.contains("aliyuncs.com")) {
+        if (current.contains("aliyuncs.com") && current.contains("myqcloud.com")) {
             return;
         }
-        System.setProperty(key, current.isBlank() ? ALIYUN_HOSTS : current + "|" + ALIYUN_HOSTS);
+        String extra = DIRECT_HOSTS;
+        if (current.contains("aliyuncs.com")) {
+            extra = "*.myqcloud.com|myqcloud.com";
+        } else if (current.contains("myqcloud.com")) {
+            extra = "*.aliyuncs.com|aliyuncs.com|dashscope.aliyuncs.com";
+        }
+        System.setProperty(key, current.isBlank() ? DIRECT_HOSTS : current + "|" + extra);
     }
 }
