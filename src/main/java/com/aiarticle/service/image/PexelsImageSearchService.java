@@ -1,5 +1,6 @@
 package com.aiarticle.service.image;
 
+import com.aiarticle.enums.ImageMethodEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -19,8 +20,6 @@ import java.util.List;
 @Service
 public class PexelsImageSearchService implements ImageSearchService {
 
-    private static final String SEARCH_METHOD = "PEXELS";
-
     private final RestClient restClient;
 
     private final PexelsProperties properties;
@@ -31,7 +30,8 @@ public class PexelsImageSearchService implements ImageSearchService {
     }
 
     @Override
-    public String searchImage(String keywords) {
+    public String searchImage(ImageSearchRequest request) {
+        String keywords = request == null ? null : request.resolveQuery();
         if (!StringUtils.hasText(keywords) || !StringUtils.hasText(properties.getApiKey())) {
             log.warn("Pexels 图片检索已跳过：关键词或 API Key 为空");
             return null;
@@ -63,7 +63,7 @@ public class PexelsImageSearchService implements ImageSearchService {
 
     @Override
     public String getSearchMethod() {
-        return SEARCH_METHOD;
+        return ImageMethodEnum.getDefaultSearchMethod().getValue();
     }
 
     @Override

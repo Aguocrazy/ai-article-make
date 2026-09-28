@@ -55,7 +55,8 @@ class PexelsImageSearchServiceTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertEquals("https://images/landscape.jpg", service.searchImage("AI office"));
+        assertEquals("https://images/landscape.jpg",
+                service.searchImage(ImageSearchRequest.builder().keywords("AI office").build()));
         assertEquals("PEXELS", service.getSearchMethod());
         server.verify();
     }
@@ -65,7 +66,7 @@ class PexelsImageSearchServiceTest {
         server.expect(once(), method(HttpMethod.GET))
                 .andRespond(withServerError());
 
-        assertNull(service.searchImage("broken"));
+        assertNull(service.searchImage(ImageSearchRequest.builder().keywords("broken").build()));
         server.verify();
     }
 

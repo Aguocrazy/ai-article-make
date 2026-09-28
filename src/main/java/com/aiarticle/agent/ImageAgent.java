@@ -1,11 +1,13 @@
 package com.aiarticle.agent;
 
+import com.aiarticle.enums.ImageMethodEnum;
 import com.aiarticle.enums.SseMessageTypeEnum;
 import com.aiarticle.exception.ErrorCode;
 import com.aiarticle.exception.ThrowUtils;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.ImageRequirement;
 import com.aiarticle.model.state.ArticleState.ImageResult;
+import com.aiarticle.service.image.ImageSearchRequest;
 import com.aiarticle.service.image.ImageSearchService;
 import com.aiarticle.util.GsonUtils;
 import jakarta.annotation.Resource;
@@ -65,7 +67,7 @@ public class ImageAgent {
         String url = null;
         String method = null;
         try {
-            url = imageSearchService.searchImage(requirement.getKeywords());
+            url = imageSearchService.searchImage(toSearchRequest(requirement));
             if (StringUtils.hasText(url)) {
                 method = imageSearchService.getSearchMethod();
             }
@@ -76,7 +78,7 @@ public class ImageAgent {
 
         if (!StringUtils.hasText(url)) {
             url = imageSearchService.getFallbackImageUrl(requirement.getPosition());
-            method = "FALLBACK";
+            method = ImageMethodEnum.getFallbackMethod().getValue();
         }
         ThrowUtils.throwIf(!StringUtils.hasText(url),
                 ErrorCode.OPERATION_ERROR, "图片检索及降级均失败");
@@ -89,5 +91,14 @@ public class ImageAgent {
         result.setSectionTitle(requirement.getSectionTitle());
         result.setDescription(requirement.getType());
         return result;
+    }
+
+    private static ImageSearchRequest toSearchRequest(ImageRequirement requirement) {
+        return ImageSearchRequest.builder()
+                .position(requirement.getPosition())
+                .type(requirement.getType())
+                .sectionTitle(requirement.getSectionTitle())
+                .keywords(requirement.getKeywords())
+                .build();
     }
 }

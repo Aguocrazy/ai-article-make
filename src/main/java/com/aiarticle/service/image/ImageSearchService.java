@@ -9,18 +9,18 @@ package com.aiarticle.service.image;
 public interface ImageSearchService {
 
     /**
-     * 根据关键词搜索一张图片。
+     * 按通用配图请求取一张图。
      *
-     * @param keywords 搜索关键词，通常为智能体4生成的英文关键词
+     * @param request 关键词、prompt、位置等
      * @return 可直接访问的图片 URL；未搜索到时返回 {@code null}
      */
-    String searchImage(String keywords);
+    String searchImage(ImageSearchRequest request);
 
     /**
      * 获取当前图片检索方式。
      * <p>
-     * 用于记录 {@code ArticleState.ImageResult.method}，例如 {@code PEXELS}、
-     * {@code UNSPLASH} 或 {@code FALLBACK}。
+     * 用于记录 {@code ArticleState.ImageResult.method}，对应 {@code ImageMethodEnum}，
+     * 例如 {@code PEXELS}、{@code NANO_BANANA} 或降级 {@code PICSUM}。
      *
      * @return 图片检索方式标识
      */
