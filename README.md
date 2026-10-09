@@ -364,7 +364,7 @@ SSE 实现要点：
 配图方式见 `ImageMethodEnum`（`PEXELS`、`MERMAID`、`NANO_BANANA`、`ICONIFY` 等）。
 通用入参为 `ImageSearchRequest`（`keywords` 检索、`prompt` 生图 / 图表源码、`method` 指定策略）。
 当前 **默认注入** `PexelsImageSearchService`（`@Primary`）。
-`MermaidService`、`IconifyService` 已实现，**尚未按 method 分流**，后续再接到智能体 4 / 5。
+`MermaidService`、`IconifyService`、`SvgDiagramService` 已实现，**尚未按 method 分流**，后续再接到智能体 4 / 5。
 
 `PexelsImageSearchService` 按 [Pexels API](https://www.pexels.com/api/documentation/) 调用
 `GET https://api.pexels.com/v1/search`，`Authorization` 请求头带 Key，
@@ -377,6 +377,9 @@ Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photo
 
 `IconifyService` 调用 [Iconify `/search?query=`](https://iconify.design/docs/api/search.html) 按关键词检索，取第一条 `prefix:name`，再请求 `/{prefix}/{name}.svg` 得到 SVG。
 优先经 `CosFileClient` 上传；COS 未配置时返回 Iconify 公开 SVG 地址。
+
+`SvgDiagramService` 用 `PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT` 调大模型生成概念示意图 SVG，再上传 COS。
+需求文本来自 `ImageSearchRequest` 的 prompt / keywords。模型若包了 markdown 围栏会先剥掉。COS 未配置或生成失败时返回 `null`。
 
 ### 腾讯云 COS
 
@@ -394,9 +397,9 @@ Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photo
 已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，
 标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成的异步 SSE 生成（5 线程、零队列），
 文章删除 / 详情编辑保存、创作设定写入提示词、雪花 ID 以字符串返回以免前端精度丢失。
-配图默认 Pexels；Mermaid 生图策略与腾讯云 COS 上传下载已接入，策略分流未接。
+配图默认 Pexels；Mermaid、Iconify、大模型 SVG 示意图与腾讯云 COS 已接入，策略分流未接。
 工作台「我的文章」通过 `/article/list/page/vo` 与 `/article/get/{id}` 读库，不再用本机 localStorage。
 
-后续：按 `ImageMethodEnum` 在智能体 4 / 5 选择配图策略（Mermaid、Iconify 等）。
+后续：按 `ImageMethodEnum` 在智能体 4 / 5 选择配图策略（Mermaid、Iconify、SVG_DIAGRAM 等）。
 
 扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
