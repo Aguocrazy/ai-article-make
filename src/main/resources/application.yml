@@ -44,6 +44,11 @@ image:
     fallback-urls:
       - https://images.pexels.com/photos/3573351/pexels-photo-3573351.png?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200
       - https://images.pexels.com/photos/2880507/pexels-photo-2880507.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200
+  # Iconify 图标检索（https://iconify.design/docs/api/queries.html），尚未按 method 分流
+  iconify:
+    base-url: https://api.iconify.design
+    # 公开 API 最小 limit 为 32，实际只用第一条
+    limit: 32
 
 # Mermaid CLI（mmdc）图表生成
 mermaid:

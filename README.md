@@ -23,6 +23,9 @@
 | Spring Session | — | Session 存 Redis，有效期 30 天 |
 | Hutool | 5.8.32 | 工具库 |
 | Knife4j | 4.5.0 | 中文 OpenAPI 文档（springdoc） |
+| Spring AI Alibaba | 1.1.0.0-RC2 | DashScope 对话与智能体 |
+| DashScope Java SDK | 2.23.1 | 官方 SDK（要求 ≥ 2.22.6） |
+| 腾讯云 COS SDK | 5.6.255.1 | `com.qcloud:cos_api`，对象上传 / 下载 |
 | Maven Wrapper | 3.9.9 | 无需本机安装 Maven |
 
 ### 前端
@@ -44,18 +47,19 @@ ai-article-make/
 │   ├── AiArticleMakeApplication.java
 │   ├── agent/           # 标题、大纲、正文等串行智能体
 │   ├── common/          # BaseResponse、分页 / 删除请求、ResultUtils
-│   ├── config/          # 跨域、Knife4j、文章生成线程池
+│   ├── config/          # 跨域、Knife4j、线程池、COS、Mermaid、代理直连
 │   ├── constant/        # 用户角色、文章状态、智能体提示词
+│   ├── enums/           # 配图方式 ImageMethodEnum、SSE 消息类型
 │   ├── controller/      # User / Article / Test / Doc
 │   ├── exception/       # 业务异常、错误码、全局处理
 │   ├── mapper/
 │   ├── model/           # dto / entity / state / vo
 │   ├── task/            # ArticleGenerationTask 串行编排
-│   ├── util/            # 大模型调用与 JSON 工具
+│   ├── util/            # 大模型调用、JSON、CosFileClient
 │   └── service/
-│       └── image/       # 可替换的图片检索服务接口
+│       └── image/       # 配图策略：Pexels（默认）、MermaidService
 ├── src/main/resources/
-│   ├── application.yml          # 数据源、Redis、Session、Knife4j
+│   ├── application.yml          # 数据源、Redis、DashScope、Pexels、Mermaid、COS、Knife4j
 │   └── application.properties   # 端口 8080、日志级别
 ├── sql/
 │   ├── init_user.sql
@@ -76,7 +80,9 @@ model/dto 请求  → entity 表映射  → vo 脱敏返回
 - JDK 21
 - MySQL 8.0+
 - Redis（本机默认 `localhost:6379`，无密码）
-- Node.js `^22.18.0` 或 `>=24.12.0`（仅跑前端时需要）
+- Node.js `^22.18.0` 或 `>=24.12.0`（跑前端、以及本机 `mmdc` 时需要）
+- 可选：全局安装 [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli)（命令 `mmdc` / Windows 为 `mmdc.cmd`），仅在调用 Mermaid 生图策略时需要
+- 可选：腾讯云 COS 存储桶与 API 密钥，仅在上传 / 下载对象或 Mermaid 出图落 COS 时需要
 
 ## 快速开始
 
@@ -135,10 +141,23 @@ COS_REGION=ap-guangzhou
 ```
 
 也可通过同名环境变量传入。未配 Pexels Key 时配图走 `application.yml` 里的兜底图。
-未配 COS 密钥时应用仍可启动，调用 `CosFileClient` 上传/下载会提示未配置。接入说明见 [COS Java SDK 快速入门](https://cloud.tencent.com/document/product/436/10199)。
+未配 COS 密钥时应用仍可启动，调用 `CosFileClient` 上传 / 下载会提示未配置。接入说明见 [COS Java SDK 快速入门](https://cloud.tencent.com/document/product/436/10199)。
 
-若本机开了系统代理（常见为 Clash `127.0.0.1:7897`），JDK 会自动走代理访问 DashScope，TLS 握手常被对端直接掐断
-（`Remote host terminated the handshake`）。应用启动时会把 `*.aliyuncs.com` 加入 `nonProxyHosts` 直连阿里云。
+`application.yml` 里 `tencent.cos` 对应上述占位符；`mermaid` 段控制本机 CLI：
+
+```yaml
+mermaid:
+  cli-command: mmdc          # Windows 用 mmdc.cmd；IDEA 找不到时可写绝对路径
+  background-color: transparent
+  output-format: svg         # svg / png / pdf
+  width: 1200
+  timeout: 30000             # 毫秒
+```
+
+通义当前模型为 `qwen3.8-27b`（视觉语言模型），`spring.ai.dashscope.chat.options.multi-model` 必须为 `true`，否则会报 `url error`。更换模型改 `application.yml` 中 `spring.ai.dashscope.chat.options.model`。
+
+若本机开了系统代理（常见为 Clash `127.0.0.1:7897`），JDK 会自动走代理访问 DashScope / COS，TLS 握手常被对端直接掐断
+（`Remote host terminated the handshake`）。应用启动时会把 `*.aliyuncs.com`、`*.myqcloud.com` 加入 `nonProxyHosts` 直连。
 用 IDEA 启动时若仍报同样错误，检查 VM options 是否又覆盖了代理。
 
 应用通过实体 `User` / `Article` 使用**雪花 ID**（`KeyType.Generator` + `snowFlakeId`），逻辑删除字段 `isDelete`。表字段为驼峰命名（如 `taskId`、`userAccount`）。实体上必须加 `@Table(camelToUnderline = false)`，否则 MyBatis-Flex 默认把驼峰转成下划线去查库（`taskId` → `task_id`），会报 column 不存在。`application.yml` 里同时关闭了 `map-underscore-to-camel-case`。
@@ -334,22 +353,37 @@ SSE 实现要点：
 - `OutlineAgent`：读取标题和创作设定并流式生成大纲，写入 `ArticleState.outline`
 - `ContentAgent`：读取标题、大纲和创作设定并流式生成 Markdown 正文，写入 `ArticleState.content`
 - `ImageRequirementAgent`：读取主标题和正文，非流式分析配图需求，写入 `ArticleState.imageRequirements`
-- `ImageAgent`：逐项调用 `ImageSearchService` 检索图片，写入 `ArticleState.images`；封面同步写入 `coverImage`
+- `ImageAgent`：逐项调用 `ImageSearchService.searchImage(ImageSearchRequest)` 取图，写入 `ArticleState.images`；封面同步写入 `coverImage`
 - `ArticleMergeAgent`：逐行扫描正文，在匹配的 `##` 章节标题后插入 Markdown 图片，写入 `ArticleState.fullContent`
 
 各智能体通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
-`ImageAgent` 通过 `ImageSearchService` 检索图片；该接口提供关键词搜索、检索方式标识和降级图片 URL，
-后续更换 Pexels、Unsplash 等来源时只需新增实现类。每完成一张图片就以
-`IMAGE_COMPLETE:` 加图片结果 JSON 的形式推送进度；检索无结果或异常时使用降级图片。
+`ImageAgent` 只依赖 `ImageSearchService`（关键词 / prompt、检索方式、降级 URL）。
+每完成一张图片就以 `IMAGE_COMPLETE:` 加图片结果 JSON 推送；检索无结果或异常时使用降级图片。
 
-当前实现 `PexelsImageSearchService` 按
-[Pexels API](https://www.pexels.com/api/documentation/) 规范调用
-`GET https://api.pexels.com/v1/search`，在 `Authorization` 请求头携带 Key，
-用 `query` 搜索、固定 `orientation=landscape`，优先取 `photos[0].src.landscape`。
-未配置 Key、API 异常或无结果时，不再请求远程 API，而是按图片位置循环使用
-`application.yml` 中的 `image.pexels.fallback-urls`。Pexels 默认限额为每小时 200 次、
-每月 20,000 次；界面保留了 “Photos by Pexels” 链接以满足来源标注要求。
+配图方式见 `ImageMethodEnum`（`PEXELS`、`MERMAID`、`NANO_BANANA`、`ICONIFY` 等）。
+通用入参为 `ImageSearchRequest`（`keywords` 检索、`prompt` 生图 / 图表源码、`method` 指定策略）。
+当前 **默认注入** `PexelsImageSearchService`（`@Primary`）。
+`MermaidService`、`IconifyService` 已实现，**尚未按 method 分流**，后续再接到智能体 4 / 5。
+
+`PexelsImageSearchService` 按 [Pexels API](https://www.pexels.com/api/documentation/) 调用
+`GET https://api.pexels.com/v1/search`，`Authorization` 请求头带 Key，
+`orientation=landscape`，优先 `photos[0].src.landscape`。
+未配置 Key、API 异常或无结果时，按位置循环使用 `image.pexels.fallback-urls`。
+Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photos by Pexels” 以满足来源标注。
+
+`MermaidService` 读取 `MermaidConfig`，把请求里的 Mermaid 源码交给本机 `mmdc` 渲成 svg/png/pdf，再经 `CosFileClient` 上传，返回可访问 URL。
+源码为空、CLI 失败或 COS 未配置时返回 `null`。IDEA 启动若找不到 `mmdc`，把 `mermaid.cli-command` 改成绝对路径。
+
+`IconifyService` 调用 [Iconify `/search?query=`](https://iconify.design/docs/api/search.html) 按关键词检索，取第一条 `prefix:name`，再请求 `/{prefix}/{name}.svg` 得到 SVG。
+优先经 `CosFileClient` 上传；COS 未配置时返回 Iconify 公开 SVG 地址。
+
+### 腾讯云 COS
+
+`CosFileClient`（`com.aiarticle.util`）封装上传 / 下载：本地文件、字节、输入流上传；下载到文件或字节数组。
+对象键会拼上可选的 `tencent.cos.key-prefix`；访问 URL 默认为
+`https://{bucket}.cos.{region}.myqcloud.com/{key}`，配置了 `custom-domain` 则走自定义域名。
+进程内只保留一个 `COSClient`，HTTPS，销毁时 `shutdown()`。
 
 图文合成按 `ImageResult.sectionTitle` 与二级标题文本精确匹配；同一章节存在多张图时只插入第一张，
 封面图仍单独保存在 `coverImage`。编排由 `ArticleGenerationTask` 串行调用上述智能体，经
@@ -358,7 +392,11 @@ SSE 实现要点：
 ## 当前范围与后续
 
 已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，
-以及标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成的异步 SSE 生成（5 线程、零队列）。
+标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成的异步 SSE 生成（5 线程、零队列），
+文章删除 / 详情编辑保存、创作设定写入提示词、雪花 ID 以字符串返回以免前端精度丢失。
+配图默认 Pexels；Mermaid 生图策略与腾讯云 COS 上传下载已接入，策略分流未接。
 工作台「我的文章」通过 `/article/list/page/vo` 与 `/article/get/{id}` 读库，不再用本机 localStorage。
+
+后续：按 `ImageMethodEnum` 在智能体 4 / 5 选择配图策略（Mermaid、Iconify 等）。
 
 扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。
