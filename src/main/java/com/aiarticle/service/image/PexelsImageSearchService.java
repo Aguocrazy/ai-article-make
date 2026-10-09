@@ -2,6 +2,7 @@ package com.aiarticle.service.image;
 
 import com.aiarticle.enums.ImageMethodEnum;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -17,6 +18,7 @@ import java.util.List;
  * API 异常或无结果时返回 {@code null}，由智能体5调用固定降级图片。
  */
 @Slf4j
+@Primary
 @Service
 public class PexelsImageSearchService implements ImageSearchService {
 

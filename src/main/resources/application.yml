@@ -45,6 +45,19 @@ image:
       - https://images.pexels.com/photos/3573351/pexels-photo-3573351.png?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200
       - https://images.pexels.com/photos/2880507/pexels-photo-2880507.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200
 
+# Mermaid CLI（mmdc）图表生成
+mermaid:
+  # Windows 用 mmdc.cmd，Linux/Mac 用 mmdc
+  cli-command: mmdc
+  # transparent 为透明背景
+  background-color: transparent
+  # svg / png / pdf
+  output-format: svg
+  # 图片宽度（像素）
+  width: 1200
+  # 命令执行超时时间（毫秒）
+  timeout: 30000
+
 # 腾讯云 COS（密钥见 config/secrets.properties，未配置时工具类会报操作失败）
 tencent:
   cos:
