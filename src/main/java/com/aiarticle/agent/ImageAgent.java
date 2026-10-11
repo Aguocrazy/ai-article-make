@@ -77,7 +77,7 @@ public class ImageAgent {
                 ? requirement.getMethod().trim()
                 : ImageMethodEnum.getDefaultSearchMethod().getValue();
         try {
-            ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement));
+            ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement, requestedMethod));
             url = imageCloudStore.toPublicUrl(payload);
             if (StringUtils.hasText(url)) {
                 method = requestedMethod;
