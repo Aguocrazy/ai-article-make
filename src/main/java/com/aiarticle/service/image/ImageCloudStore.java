@@ -60,7 +60,8 @@ public class ImageCloudStore {
             byte[] bytes = decodeBase64(payload.getContent());
             return uploadBytes(bytes, payload, StringUtils.hasText(payload.getExtension()) ? payload.getExtension() : "bin");
         } catch (RuntimeException e) {
-            log.warn("Base64 上传 COS 失败, error={}", e.getMessage());
+            log.warn("Base64 上传 COS 失败, type={}, ext={}, error={}",
+                    payload.getContentType(), payload.getExtension(), e.getMessage());
             return null;
         }
     }
@@ -74,8 +75,8 @@ public class ImageCloudStore {
         String contentType = StringUtils.hasText(payload.getContentType())
                 ? payload.getContentType()
                 : contentTypeOf(ext);
-        CosFileClient.CosUploadResult uploaded = cosFileClient.upload(
-                bytes, prefix + "/" + UUID.randomUUID() + "." + ext, contentType);
+        String key = prefix + "/" + UUID.randomUUID() + "." + ext;
+        CosFileClient.CosUploadResult uploaded = cosFileClient.upload(bytes, key, contentType);
         return uploaded == null ? null : uploaded.url();
     }
 

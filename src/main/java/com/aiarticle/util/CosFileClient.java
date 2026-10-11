@@ -5,6 +5,7 @@ import com.aiarticle.exception.BusinessException;
 import com.aiarticle.exception.ErrorCode;
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.exception.CosClientException;
+import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.GetObjectRequest;
 import com.qcloud.cos.model.ObjectMetadata;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 /**
  * 腾讯云 COS 文件上传 / 下载。
@@ -26,6 +28,11 @@ import java.nio.charset.StandardCharsets;
  * 简单上传适用于不超过 5GB 的对象；下载可用本地文件或字节数组。
  */
 public class CosFileClient {
+
+    /**
+     * 腾讯云桶名一般为 {@code <name>-<APPID>}，APPID 为纯数字。
+     */
+    private static final Pattern BUCKET_NAME = Pattern.compile("^[a-z0-9][a-z0-9-]{1,38}-\\d+$");
 
     private final COSClient cosClient;
     private final CosProperties properties;
@@ -67,7 +74,8 @@ public class CosFileClient {
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(contentLength);
         if (StringUtils.hasText(contentType)) {
-            metadata.setContentType(contentType);
+            // 官方建议对 Content-Type 等标准头使用 setHeader，避免特殊字符（如 svg+xml 的 +）处理异常
+            metadata.setHeader("Content-Type", contentType);
         }
         try {
             PutObjectResult result = cosClient.putObject(
@@ -166,7 +174,13 @@ public class CosFileClient {
 
     private void requireClient() {
         if (cosClient == null || !properties.isConfigured()) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "腾讯云 COS 未配置，请设置 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET");
+            throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                    "腾讯云 COS 未配置，请设置 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET、COS_REGION");
+        }
+        String bucket = properties.getBucket().trim();
+        if (!BUCKET_NAME.matcher(bucket).matches()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                    "COS_BUCKET 格式应为 <桶名>-<APPID>（如 example-1250000000），当前值长度=" + bucket.length());
         }
     }
 
@@ -194,6 +208,13 @@ public class CosFileClient {
     }
 
     private static BusinessException wrap(RuntimeException e, String message) {
+        if (e instanceof CosServiceException cse) {
+            String errMsg = StringUtils.hasText(cse.getErrorMessage()) ? cse.getErrorMessage() : "(empty)";
+            String detail = errMsg + " (Status Code: " + cse.getStatusCode()
+                    + "; Error Code: " + cse.getErrorCode()
+                    + "; Request ID: " + cse.getRequestId() + ")";
+            return new BusinessException(ErrorCode.OPERATION_ERROR, message + "：" + detail);
+        }
         String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         return new BusinessException(ErrorCode.OPERATION_ERROR, message + "：" + detail);
     }

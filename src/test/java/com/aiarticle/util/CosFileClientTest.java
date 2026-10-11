@@ -43,6 +43,24 @@ class CosFileClientTest {
     }
 
     @Test
+    void upload_throwsWhenBucketNameInvalid() {
+        CosProperties props = properties("");
+        props.setBucket("short");
+        CosFileClient client = new CosFileClient(
+                new com.qcloud.cos.COSClient(
+                        new com.qcloud.cos.auth.BasicCOSCredentials("id", "key"),
+                        new com.qcloud.cos.ClientConfig(new com.qcloud.cos.region.Region("ap-guangzhou"))),
+                props);
+        try {
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> client.upload(new byte[]{1}, "a.bin", "application/octet-stream"));
+            assertTrue(ex.getMessage().contains("COS_BUCKET"));
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @Test
     void resolveKey_rejectsBlank() {
         CosFileClient client = new CosFileClient(null, properties(""));
         assertThrows(BusinessException.class, () -> client.resolveKey("  "));
