@@ -65,10 +65,10 @@ public class MermaidService implements ImageSearchService {
             return ImagePayload.base64(bytes, contentType(format), format, "mermaid");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("Mermaid 生图被中断");
+            log.error("Mermaid 生图被中断, sourceLen={}", source.length());
             return null;
         } catch (RuntimeException | IOException e) {
-            log.warn("Mermaid 生图失败, error={}", e.getMessage());
+            log.error("Mermaid 生图失败, sourceLen={}, error={}", source.length(), e.toString(), e);
             return null;
         } finally {
             deleteQuietly(dir);

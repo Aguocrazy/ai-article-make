@@ -95,7 +95,6 @@ class ImageAgentTest {
                 .thenThrow(new RuntimeException("模型不可用"));
         when(imageSearchService.searchImage(request(1, "cover", "", "PEXELS", "broken", "说明")))
                 .thenReturn(null);
-        when(imageCloudStore.toPublicUrl(any())).thenReturn(null);
         when(imageSearchService.getFallbackImageUrl(1)).thenReturn("https://img/fallback.jpg");
 
         imageAgent.generate(state, streamHandler);

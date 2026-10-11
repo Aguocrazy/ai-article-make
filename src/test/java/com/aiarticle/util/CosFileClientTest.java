@@ -40,6 +40,7 @@ class CosFileClientTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> client.upload(new byte[]{1}, "a.bin", "application/octet-stream"));
         assertTrue(ex.getMessage().contains("未配置"));
+        assertTrue(client.describeConfig().contains("configured=false"));
     }
 
     @Test
@@ -55,9 +56,20 @@ class CosFileClientTest {
             BusinessException ex = assertThrows(BusinessException.class,
                     () -> client.upload(new byte[]{1}, "a.bin", "application/octet-stream"));
             assertTrue(ex.getMessage().contains("COS_BUCKET"));
+            assertTrue(ex.getMessage().contains("bucket=short"));
         } finally {
             client.shutdown();
         }
+    }
+
+    @Test
+    void describeConfig_includesBucketRegion() {
+        CosFileClient client = new CosFileClient(null, properties("articles"));
+        String summary = client.describeConfig();
+        assertTrue(summary.contains("bucket=demo-1250000000"));
+        assertTrue(summary.contains("region=ap-guangzhou"));
+        assertTrue(summary.contains("keyPrefix=articles"));
+        assertTrue(summary.contains("clientReady=false"));
     }
 
     @Test

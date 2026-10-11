@@ -43,7 +43,7 @@ public class SvgDiagramService implements ImageSearchService {
             }
             return ImagePayload.base64(svg.getBytes(StandardCharsets.UTF_8), "image/svg+xml", "svg", "svg-diagram");
         } catch (RuntimeException e) {
-            log.warn("SVG 示意图生成失败, error={}", e.getMessage());
+            log.error("SVG 示意图生成失败, requirement={}, error={}", requirement, e.toString(), e);
             return null;
         }
     }

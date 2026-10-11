@@ -80,8 +80,8 @@ public class ImageAgent {
         String method = StringUtils.hasText(url) ? requestedMethod : null;
 
         if (!StringUtils.hasText(url) && !fallbackMethod.equalsIgnoreCase(requestedMethod)) {
-            log.warn("主策略失败，改用 Pexels 兜底, position={}, method={}",
-                    requirement.getPosition(), requestedMethod);
+            log.warn("主策略未得到可用 URL，改用 Pexels 兜底, position={}, method={}, keywords={}",
+                    requirement.getPosition(), requestedMethod, requirement.getKeywords());
             url = tryGenerate(requirement, fallbackMethod);
             if (StringUtils.hasText(url)) {
                 method = fallbackMethod;
@@ -89,6 +89,8 @@ public class ImageAgent {
         }
 
         if (!StringUtils.hasText(url)) {
+            log.warn("检索均失败，使用静态兜底图, position={}, requestedMethod={}",
+                    requirement.getPosition(), requestedMethod);
             url = imageSearchService.getFallbackImageUrl(requirement.getPosition());
             method = fallbackMethod;
         }
@@ -108,10 +110,24 @@ public class ImageAgent {
     private String tryGenerate(ImageRequirement requirement, String method) {
         try {
             ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement, method));
-            return imageCloudStore.toPublicUrl(payload);
+            if (payload == null || !payload.hasContent()) {
+                log.warn("生图策略无产物, position={}, method={}, keywords={}",
+                        requirement.getPosition(), method, requirement.getKeywords());
+                return null;
+            }
+            String url = imageCloudStore.toPublicUrl(payload);
+            if (!StringUtils.hasText(url)) {
+                log.error("生图产物未能转成公开 URL, position={}, method={}, payloadType={}, contentType={}, ext={}",
+                        requirement.getPosition(), method, payload.getType(),
+                        payload.getContentType(), payload.getExtension());
+            } else {
+                log.info("配图成功, position={}, method={}, url={}",
+                        requirement.getPosition(), method, url);
+            }
+            return url;
         } catch (RuntimeException e) {
-            log.warn("图片生成失败, position={}, method={}, error={}",
-                    requirement.getPosition(), method, e.getMessage());
+            log.error("图片生成异常, position={}, method={}, keywords={}, error={}",
+                    requirement.getPosition(), method, requirement.getKeywords(), e.toString(), e);
             return null;
         }
     }

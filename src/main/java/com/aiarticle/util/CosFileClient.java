@@ -12,6 +12,7 @@ import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PutObjectRequest;
 import com.qcloud.cos.model.PutObjectResult;
 import com.qcloud.cos.utils.IOUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayInputStream;
@@ -27,6 +28,7 @@ import java.util.regex.Pattern;
  * <p>
  * 简单上传适用于不超过 5GB 的对象；下载可用本地文件或字节数组。
  */
+@Slf4j
 public class CosFileClient {
 
     /**
@@ -43,6 +45,18 @@ public class CosFileClient {
     }
 
     /**
+     * 用于排查的非敏感配置摘要（不含密钥）。
+     */
+    public String describeConfig() {
+        return "bucket=" + safe(properties.getBucket())
+                + ", region=" + safe(properties.getRegion())
+                + ", keyPrefix=" + safe(properties.getKeyPrefix())
+                + ", customDomain=" + safe(properties.getCustomDomain())
+                + ", configured=" + properties.isConfigured()
+                + ", clientReady=" + (cosClient != null);
+    }
+
+    /**
      * 上传本地文件，返回对象键与访问 URL。
      */
     public CosUploadResult upload(File file, String key) {
@@ -53,9 +67,10 @@ public class CosFileClient {
         String objectKey = resolveKey(key);
         try {
             PutObjectResult result = cosClient.putObject(new PutObjectRequest(properties.getBucket(), objectKey, file));
+            log.info("COS 上传成功, {}, key={}, size={}", describeConfig(), objectKey, file.length());
             return new CosUploadResult(objectKey, publicUrl(objectKey), result.getETag());
         } catch (CosClientException e) {
-            throw wrap(e, "上传文件失败");
+            throw wrap(e, "上传文件失败", objectKey, null, file.length());
         }
     }
 
@@ -80,9 +95,11 @@ public class CosFileClient {
         try {
             PutObjectResult result = cosClient.putObject(
                     new PutObjectRequest(properties.getBucket(), objectKey, inputStream, metadata));
+            log.info("COS 上传成功, {}, key={}, contentType={}, size={}",
+                    describeConfig(), objectKey, contentType, contentLength);
             return new CosUploadResult(objectKey, publicUrl(objectKey), result.getETag());
         } catch (CosClientException e) {
-            throw wrap(e, "上传文件失败");
+            throw wrap(e, "上传文件失败", objectKey, contentType, contentLength);
         }
     }
 
@@ -108,7 +125,7 @@ public class CosFileClient {
         try {
             cosClient.getObject(new GetObjectRequest(properties.getBucket(), objectKey), destFile);
         } catch (CosClientException e) {
-            throw wrap(e, "下载文件失败");
+            throw wrap(e, "下载文件失败", objectKey, null, -1);
         }
     }
 
@@ -124,9 +141,10 @@ public class CosFileClient {
             InputStream in = cosObject.getObjectContent();
             return IOUtils.toByteArray(in);
         } catch (CosClientException e) {
-            throw wrap(e, "下载文件失败");
+            throw wrap(e, "下载文件失败", objectKey, null, -1);
         } catch (IOException e) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "读取 COS 对象流失败");
+            log.error("读取 COS 对象流失败, {}, key={}", describeConfig(), objectKey, e);
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "读取 COS 对象流失败：" + e.getMessage());
         } finally {
             if (cosObject != null) {
                 try {
@@ -174,14 +192,44 @@ public class CosFileClient {
 
     private void requireClient() {
         if (cosClient == null || !properties.isConfigured()) {
+            log.error("COS 未就绪, {}", describeConfig());
             throw new BusinessException(ErrorCode.OPERATION_ERROR,
-                    "腾讯云 COS 未配置，请设置 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET、COS_REGION");
+                    "腾讯云 COS 未配置，请设置 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET、COS_REGION | " + describeConfig());
         }
         String bucket = properties.getBucket().trim();
         if (!BUCKET_NAME.matcher(bucket).matches()) {
+            log.error("COS_BUCKET 格式非法, {}", describeConfig());
             throw new BusinessException(ErrorCode.PARAMS_ERROR,
-                    "COS_BUCKET 格式应为 <桶名>-<APPID>（如 example-1250000000），当前值长度=" + bucket.length());
+                    "COS_BUCKET 格式应为 <桶名>-<APPID>（如 example-1250000000） | " + describeConfig());
         }
+    }
+
+    private BusinessException wrap(RuntimeException e, String message, String key, String contentType, long size) {
+        String cosDetail = formatCosException(e);
+        String context = describeConfig()
+                + ", key=" + safe(key)
+                + ", contentType=" + safe(contentType)
+                + ", size=" + size;
+        log.error("COS 操作失败: {} | {} | {}", message, context, cosDetail, e);
+        return new BusinessException(ErrorCode.OPERATION_ERROR, message + "：" + cosDetail + " | " + context);
+    }
+
+    private static String formatCosException(RuntimeException e) {
+        if (e instanceof CosServiceException cse) {
+            String errMsg = StringUtils.hasText(cse.getErrorMessage()) ? cse.getErrorMessage() : "(empty)";
+            return errMsg
+                    + " (Status Code: " + cse.getStatusCode()
+                    + "; Error Code: " + cse.getErrorCode()
+                    + "; Request ID: " + cse.getRequestId() + ")";
+        }
+        if (e instanceof CosClientException) {
+            return e.getClass().getSimpleName() + ": " + (e.getMessage() == null ? "" : e.getMessage());
+        }
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    }
+
+    private static String safe(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "(empty)";
     }
 
     private static String stripLeadingSlash(String value) {
@@ -205,18 +253,6 @@ public class CosFileClient {
             builder.append(URLEncoder.encode(parts[i], StandardCharsets.UTF_8).replace("+", "%20"));
         }
         return builder.toString();
-    }
-
-    private static BusinessException wrap(RuntimeException e, String message) {
-        if (e instanceof CosServiceException cse) {
-            String errMsg = StringUtils.hasText(cse.getErrorMessage()) ? cse.getErrorMessage() : "(empty)";
-            String detail = errMsg + " (Status Code: " + cse.getStatusCode()
-                    + "; Error Code: " + cse.getErrorCode()
-                    + "; Request ID: " + cse.getRequestId() + ")";
-            return new BusinessException(ErrorCode.OPERATION_ERROR, message + "：" + detail);
-        }
-        String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-        return new BusinessException(ErrorCode.OPERATION_ERROR, message + "：" + detail);
     }
 
     public record CosUploadResult(String key, String url, String etag) {

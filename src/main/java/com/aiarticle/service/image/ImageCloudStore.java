@@ -35,6 +35,7 @@ public class ImageCloudStore {
      */
     public String toPublicUrl(ImagePayload payload) {
         if (payload == null || !payload.hasContent()) {
+            log.warn("配图产物为空，跳过 COS 上传, {}", cosFileClient.describeConfig());
             return null;
         }
         return switch (payload.getType()) {
@@ -47,10 +48,19 @@ public class ImageCloudStore {
         String sourceUrl = payload.getContent().trim();
         try {
             byte[] bytes = restClient.get().uri(sourceUrl).retrieve().body(byte[].class);
+            if (bytes == null || bytes.length == 0) {
+                log.warn("按 URL 下载内容为空，沿用原地址, url={}", sourceUrl);
+                return sourceUrl;
+            }
             String uploaded = uploadBytes(bytes, payload, guessExtension(payload, sourceUrl));
-            return StringUtils.hasText(uploaded) ? uploaded : sourceUrl;
+            if (!StringUtils.hasText(uploaded)) {
+                log.warn("按 URL 转存 COS 返回空，沿用原地址, url={}, {}", sourceUrl, cosFileClient.describeConfig());
+                return sourceUrl;
+            }
+            return uploaded;
         } catch (RuntimeException e) {
-            log.warn("按 URL 转存 COS 失败，沿用原地址, url={}, error={}", sourceUrl, e.getMessage());
+            log.error("按 URL 转存 COS 失败，沿用原地址, url={}, {}, error={}",
+                    sourceUrl, cosFileClient.describeConfig(), e.toString(), e);
             return sourceUrl;
         }
     }
@@ -58,16 +68,30 @@ public class ImageCloudStore {
     private String uploadBase64(ImagePayload payload) {
         try {
             byte[] bytes = decodeBase64(payload.getContent());
-            return uploadBytes(bytes, payload, StringUtils.hasText(payload.getExtension()) ? payload.getExtension() : "bin");
+            String url = uploadBytes(bytes, payload,
+                    StringUtils.hasText(payload.getExtension()) ? payload.getExtension() : "bin");
+            if (!StringUtils.hasText(url)) {
+                log.error("Base64 上传 COS 返回空, type={}, ext={}, bytes={}, {}",
+                        payload.getContentType(), payload.getExtension(),
+                        bytes == null ? 0 : bytes.length, cosFileClient.describeConfig());
+            }
+            return url;
         } catch (RuntimeException e) {
-            log.warn("Base64 上传 COS 失败, type={}, ext={}, error={}",
-                    payload.getContentType(), payload.getExtension(), e.getMessage());
+            log.error("Base64 上传 COS 失败, type={}, ext={}, contentLen={}, {}, error={}",
+                    payload.getContentType(),
+                    payload.getExtension(),
+                    payload.getContent() == null ? 0 : payload.getContent().length(),
+                    cosFileClient.describeConfig(),
+                    e.toString(),
+                    e);
             return null;
         }
     }
 
     private String uploadBytes(byte[] bytes, ImagePayload payload, String extension) {
         if (bytes == null || bytes.length == 0) {
+            log.error("上传字节为空, type={}, ext={}, {}",
+                    payload.getContentType(), extension, cosFileClient.describeConfig());
             return null;
         }
         String prefix = StringUtils.hasText(payload.getKeyPrefix()) ? payload.getKeyPrefix().trim() : "images";
@@ -76,6 +100,8 @@ public class ImageCloudStore {
                 ? payload.getContentType()
                 : contentTypeOf(ext);
         String key = prefix + "/" + UUID.randomUUID() + "." + ext;
+        log.info("准备上传配图到 COS, payloadType={}, key={}, contentType={}, bytes={}, {}",
+                payload.getType(), key, contentType, bytes.length, cosFileClient.describeConfig());
         CosFileClient.CosUploadResult uploaded = cosFileClient.upload(bytes, key, contentType);
         return uploaded == null ? null : uploaded.url();
     }
