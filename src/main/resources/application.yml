@@ -52,10 +52,12 @@ mermaid:
   background-color: transparent
   # svg / png / pdf
   output-format: svg
-  # 图片宽度（像素）
+  # 图片最大宽/高（像素），对应 mmdc --size
   width: 1200
   # 命令执行超时时间（毫秒）
   timeout: 30000
+  # Puppeteer 配置（指定本机 Chrome，避免缺 chrome-headless-shell）
+  puppeteer-config-file: config/mermaid-puppeteer.json
 
 # 腾讯云 COS（密钥见 config/secrets.properties，未配置时工具类会报操作失败）
 tencent:
@@ -72,6 +74,8 @@ tencent:
     key-prefix: ${COS_KEY_PREFIX:}
     # 自定义访问域名（CDN 等，可为空）；为空则用桶默认域名，对应 COS_CUSTOM_DOMAIN
     custom-domain: ${COS_CUSTOM_DOMAIN:}
+    # 上传对象公有读，文章配图需浏览器可直接打开；桶策略禁止 ACL 时请在控制台开公有读
+    public-read: true
 
 server:
   servlet:

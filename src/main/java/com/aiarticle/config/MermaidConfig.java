@@ -28,7 +28,7 @@ public class MermaidConfig {
     private String outputFormat = "svg";
 
     /**
-     * 图片宽度（像素）
+     * 图片最大宽/高（像素），对应 mmdc {@code --size}。
      */
     private Integer width = 1200;
 
@@ -36,4 +36,10 @@ public class MermaidConfig {
      * 命令执行超时时间（毫秒）
      */
     private Long timeout = 30000L;
+
+    /**
+     * Puppeteer 配置文件路径（mmdc {@code -p}）。
+     * 用于指定本机 Chrome，避免缺失 chrome-headless-shell。
+     */
+    private String puppeteerConfigFile = "config/mermaid-puppeteer.json";
 }

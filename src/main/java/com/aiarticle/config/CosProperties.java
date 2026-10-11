@@ -37,6 +37,12 @@ public class CosProperties {
      */
     private String customDomain = "";
 
+    /**
+     * 上传对象是否设为公有读。文章配图需要浏览器直接访问，默认开启。
+     * 若桶策略禁止 ACL，请在控制台把桶设为公有读或走自定义 CDN 域名。
+     */
+    private boolean publicRead = true;
+
     public boolean isConfigured() {
         return StringUtils.hasText(secretId)
                 && StringUtils.hasText(secretKey)

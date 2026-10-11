@@ -150,8 +150,9 @@ mermaid:
   cli-command: mmdc          # Windows 用 mmdc.cmd；IDEA 找不到时可写绝对路径
   background-color: transparent
   output-format: svg         # svg / png / pdf
-  width: 1200
+  width: 1200                # 对应 mmdc --size
   timeout: 30000             # 毫秒
+  puppeteer-config-file: config/mermaid-puppeteer.json  # 指定本机 Chrome
 ```
 
 通义当前模型为 `qwen3.8-27b`（视觉语言模型），`spring.ai.dashscope.chat.options.multi-model` 必须为 `true`，否则会报 `url error`。更换模型改 `application.yml` 中 `spring.ai.dashscope.chat.options.model`。
@@ -384,7 +385,7 @@ Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photo
 
 `BASE64` 会解码后上传 COS；`URL` 会先下载再上传，下载失败则保留原地址。
 
-`MermaidService` 读取 `MermaidConfig`，把源码交给本机 `mmdc`。源码为空或 CLI 失败返回 `null`。IDEA 启动若找不到 `mmdc`，把 `mermaid.cli-command` 改成绝对路径。
+`MermaidService` 读取 `MermaidConfig`，把源码交给本机 `mmdc`。源码为空或 CLI 失败返回 `null`。IDEA 启动若找不到 `mmdc`，把 `mermaid.cli-command` 改成绝对路径。`mmdc` 依赖 Chromium；默认用 `config/mermaid-puppeteer.json` 指向本机 Google Chrome。若仍报缺 `chrome-headless-shell`，可执行：`npx puppeteer browsers install chrome-headless-shell`。
 
 `SvgDiagramService`（method=`AI_GENERATE`）用 `PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT` 调大模型；需求来自 prompt / keywords，会剥掉 markdown 围栏。
 

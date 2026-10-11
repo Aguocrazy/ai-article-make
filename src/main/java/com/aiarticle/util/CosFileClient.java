@@ -6,6 +6,7 @@ import com.aiarticle.exception.ErrorCode;
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
+import com.qcloud.cos.model.CannedAccessControlList;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.GetObjectRequest;
 import com.qcloud.cos.model.ObjectMetadata;
@@ -52,6 +53,7 @@ public class CosFileClient {
                 + ", region=" + safe(properties.getRegion())
                 + ", keyPrefix=" + safe(properties.getKeyPrefix())
                 + ", customDomain=" + safe(properties.getCustomDomain())
+                + ", publicRead=" + properties.isPublicRead()
                 + ", configured=" + properties.isConfigured()
                 + ", clientReady=" + (cosClient != null);
     }
@@ -66,8 +68,10 @@ public class CosFileClient {
         }
         String objectKey = resolveKey(key);
         try {
-            PutObjectResult result = cosClient.putObject(new PutObjectRequest(properties.getBucket(), objectKey, file));
-            log.info("COS 上传成功, {}, key={}, size={}", describeConfig(), objectKey, file.length());
+            PutObjectResult result = putObjectWithOptionalPublicRead(
+                    new PutObjectRequest(properties.getBucket(), objectKey, file));
+            log.info("COS 上传成功, {}, key={}, size={}, publicRead={}",
+                    describeConfig(), objectKey, file.length(), properties.isPublicRead());
             return new CosUploadResult(objectKey, publicUrl(objectKey), result.getETag());
         } catch (CosClientException e) {
             throw wrap(e, "上传文件失败", objectKey, null, file.length());
@@ -92,14 +96,42 @@ public class CosFileClient {
             // 官方建议对 Content-Type 等标准头使用 setHeader，避免特殊字符（如 svg+xml 的 +）处理异常
             metadata.setHeader("Content-Type", contentType);
         }
+        // 浏览器内嵌预览（尤其 SVG）需要 inline，避免被当成附件下载
+        metadata.setHeader("Content-Disposition", "inline");
         try {
-            PutObjectResult result = cosClient.putObject(
+            PutObjectResult result = putObjectWithOptionalPublicRead(
                     new PutObjectRequest(properties.getBucket(), objectKey, inputStream, metadata));
-            log.info("COS 上传成功, {}, key={}, contentType={}, size={}",
-                    describeConfig(), objectKey, contentType, contentLength);
-            return new CosUploadResult(objectKey, publicUrl(objectKey), result.getETag());
+            String url = publicUrl(objectKey);
+            log.info("COS 上传成功, {}, key={}, contentType={}, size={}, publicRead={}, url={}",
+                    describeConfig(), objectKey, contentType, contentLength,
+                    properties.isPublicRead(), url);
+            return new CosUploadResult(objectKey, url, result.getETag());
         } catch (CosClientException e) {
             throw wrap(e, "上传文件失败", objectKey, contentType, contentLength);
+        }
+    }
+
+    /**
+     * 优先按配置设置公有读；若桶关闭了对象 ACL，回退为不带 ACL 再传一次。
+     */
+    private PutObjectResult putObjectWithOptionalPublicRead(PutObjectRequest put) {
+        if (!properties.isPublicRead()) {
+            return cosClient.putObject(put);
+        }
+        put.setCannedAcl(CannedAccessControlList.PublicRead);
+        try {
+            return cosClient.putObject(put);
+        } catch (CosServiceException e) {
+            String code = e.getErrorCode() == null ? "" : e.getErrorCode();
+            String msg = e.getErrorMessage() == null ? "" : e.getErrorMessage();
+            if (code.contains("AccessControl") || code.contains("AccessDenied")
+                    || msg.contains("ACL") || msg.contains("acl")) {
+                log.warn("COS 对象 ACL 被拒绝，改为不带 ACL 重试（请确认桶为公有读或配置 CDN）, code={}, msg={}",
+                        code, msg);
+                put.setCannedAcl(null);
+                return cosClient.putObject(put);
+            }
+            throw e;
         }
     }
 

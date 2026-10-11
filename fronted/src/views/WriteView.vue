@@ -47,6 +47,7 @@ const editing = ref(false)
 const saving = ref(false)
 const showExtra = ref(false)
 const preview = ref('')
+const coverImage = ref('')
 const snapshotBeforeEdit = ref('')
 const errorMessage = ref('')
 const progressMessage = ref('')
@@ -113,11 +114,27 @@ function applySettings(article: {
 }
 
 const count = computed(() => form.topic.length)
-const renderedPreview = computed(() => (preview.value ? renderMarkdown(preview.value) : ''))
+const renderedPreview = computed(() => {
+  if (!preview.value) {
+    return ''
+  }
+  let source = preview.value
+  // 封面单独展示时，去掉正文开头重复的同 URL 图片，避免叠两张
+  if (coverImage.value) {
+    const escaped = coverImage.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    source = source.replace(new RegExp(`^\\s*!\\[[^\\]]*\\]\\(${escaped}\\)\\s*`, 'm'), '')
+  }
+  return renderMarkdown(source)
+})
 const openedArticleId = computed(() => {
   const raw = route.query.article
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null
 })
+
+function pickCoverFromMarkdown(markdown: string) {
+  const match = markdown.match(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/)
+  return match?.[1] ?? ''
+}
 
 watch(
   () => route.query.article,
@@ -131,6 +148,7 @@ watch(
       applySettings(article)
       showExtra.value = Boolean(form.extra)
       preview.value = article.fullContent || article.content || ''
+      coverImage.value = article.coverImage || pickCoverFromMarkdown(preview.value) || ''
       errorMessage.value = article.errorMessage || ''
       progressMessage.value = article.status === 'COMPLETED' ? '已从账号打开' : (article.status || '')
       editing.value = false
@@ -171,10 +189,16 @@ function clearWorkspace() {
   form.audience = ''
   form.extra = ''
   preview.value = ''
+  coverImage.value = ''
   editing.value = false
   saving.value = false
   snapshotBeforeEdit.value = ''
   showExtra.value = false
+}
+
+function onCoverError() {
+  console.warn('封面图加载失败', coverImage.value)
+  coverImage.value = ''
 }
 
 function resetForm() {
@@ -317,7 +341,21 @@ function attachStreamListeners(source: EventSource) {
   })
   source.addEventListener('AGENT3_COMPLETE', () => setStage('AGENT3_COMPLETE'))
   source.addEventListener('AGENT4_COMPLETE', () => setStage('AGENT4_COMPLETE'))
-  source.addEventListener('IMAGE_COMPLETE', () => setStage('IMAGE_COMPLETE'))
+  source.addEventListener('IMAGE_COMPLETE', (event) => {
+    setStage('IMAGE_COMPLETE')
+    const payload = parseSseEvent<string>(event)
+    if (typeof payload?.data !== 'string') {
+      return
+    }
+    try {
+      const image = JSON.parse(payload.data) as { position?: number; url?: string }
+      if (image.position === 1 && image.url) {
+        coverImage.value = image.url
+      }
+    } catch {
+      // ignore malformed image payload
+    }
+  })
   source.addEventListener('AGENT5_COMPLETE', () => setStage('AGENT5_COMPLETE'))
   source.addEventListener('MERGE_COMPLETE', (event) => {
     const payload = parseSseEvent<string>(event)
@@ -325,6 +363,9 @@ function attachStreamListeners(source: EventSource) {
       return
     }
     preview.value = payload.data
+    if (!coverImage.value) {
+      coverImage.value = pickCoverFromMarkdown(payload.data)
+    }
     setStage('MERGE_COMPLETE')
   })
   source.addEventListener('ALL_COMPLETE', finishSuccessfully)
@@ -345,6 +386,7 @@ async function generate() {
   errorMessage.value = ''
   progressMessage.value = '正在创建任务…'
   preview.value = ''
+  coverImage.value = ''
   generating.value = true
   tab.value = 'markdown'
   try {
@@ -589,11 +631,18 @@ function downloadMarkdown() {
               <span><i class="step-no">3</i>生成文章</span>
             </div>
           </div>
-          <article
-            v-else-if="tab === 'preview'"
-            class="article-view"
-            v-html="renderedPreview"
-          />
+          <article v-else-if="tab === 'preview'" class="article-view">
+            <img
+              v-if="coverImage && !editing"
+              class="article-cover"
+              :src="coverImage"
+              alt="封面"
+              loading="eager"
+              referrerpolicy="no-referrer"
+              @error="onCoverError"
+            />
+            <div class="article-body" v-html="renderedPreview" />
+          </article>
           <textarea
             v-else-if="editing && tab === 'markdown'"
             v-model="preview"
@@ -680,11 +729,23 @@ function downloadMarkdown() {
   margin: 0 0 14px;
 }
 
+.article-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 420px;
+  object-fit: contain;
+  margin: 0 0 22px;
+  border-radius: 14px;
+  background: #f3ead6;
+}
+
 .article-view :deep(img) {
   display: block;
   width: 100%;
+  height: auto;
   max-height: 420px;
-  object-fit: cover;
+  object-fit: contain;
   margin: 18px 0 22px;
   border-radius: 14px;
   background: #f3ead6;

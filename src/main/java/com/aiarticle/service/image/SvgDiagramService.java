@@ -36,7 +36,7 @@ public class SvgDiagramService implements ImageSearchService {
         try {
             String raw = aiModelClient.callLlm(
                     PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT.replace("{requirement}", requirement.trim()));
-            String svg = extractSvg(raw);
+            String svg = normalizeSvg(extractSvg(raw));
             if (!StringUtils.hasText(svg)) {
                 log.warn("大模型未返回可用 SVG");
                 return null;
@@ -76,5 +76,48 @@ public class SvgDiagramService implements ImageSearchService {
             return text.substring(xmlStart).trim();
         }
         return text.substring(svgStart).trim();
+    }
+
+    /**
+     * 补齐 width/height，避免浏览器把仅有 viewBox 的 SVG 当成 0 高度图片。
+     */
+    static String normalizeSvg(String svg) {
+        if (!StringUtils.hasText(svg)) {
+            return null;
+        }
+        String text = svg.trim();
+        int svgStart = text.toLowerCase().indexOf("<svg");
+        if (svgStart < 0) {
+            return text;
+        }
+        int openEnd = text.indexOf('>', svgStart);
+        if (openEnd < 0) {
+            return text;
+        }
+        String openTag = text.substring(svgStart, openEnd + 1);
+        boolean hasWidth = Pattern.compile("(?is)\\bwidth\\s*=").matcher(openTag).find();
+        boolean hasHeight = Pattern.compile("(?is)\\bheight\\s*=").matcher(openTag).find();
+        if (hasWidth && hasHeight) {
+            return text;
+        }
+        Matcher viewBox = Pattern.compile("(?is)\\bviewBox\\s*=\\s*[\"']([^\"']+)[\"']").matcher(openTag);
+        String width = "800";
+        String height = "600";
+        if (viewBox.find()) {
+            String[] parts = viewBox.group(1).trim().split("\\s+");
+            if (parts.length == 4) {
+                width = parts[2];
+                height = parts[3];
+            }
+        }
+        StringBuilder attrs = new StringBuilder();
+        if (!hasWidth) {
+            attrs.append(" width=\"").append(width).append('"');
+        }
+        if (!hasHeight) {
+            attrs.append(" height=\"").append(height).append('"');
+        }
+        String injected = openTag.substring(0, openTag.length() - 1) + attrs + ">";
+        return text.substring(0, svgStart) + injected + text.substring(openEnd + 1);
     }
 }

@@ -48,7 +48,16 @@ class SvgDiagramServiceTest {
         assertEquals("svg-diagram", payload.getKeyPrefix());
         String decoded = new String(Base64.getDecoder().decode(payload.getContent()), StandardCharsets.UTF_8);
         assertTrue(decoded.contains("<svg"));
+        assertTrue(decoded.contains("width=\"800\""));
+        assertTrue(decoded.contains("height=\"600\""));
         assertEquals("AI_GENERATE", service.getSearchMethod());
+    }
+
+    @Test
+    void normalizeSvg_addsWidthHeightFromViewBox() {
+        String normalized = SvgDiagramService.normalizeSvg("<svg viewBox=\"0 0 800 600\"></svg>");
+        assertTrue(normalized.contains("width=\"800\""));
+        assertTrue(normalized.contains("height=\"600\""));
     }
 
     @Test
