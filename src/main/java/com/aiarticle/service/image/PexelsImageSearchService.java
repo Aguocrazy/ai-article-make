@@ -2,7 +2,6 @@ package com.aiarticle.service.image;
 
 import com.aiarticle.enums.ImageMethodEnum;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -18,7 +17,6 @@ import java.util.List;
  * API 异常或无结果时返回 {@code null}，由智能体5调用固定降级图片。
  */
 @Slf4j
-@Primary
 @Service
 public class PexelsImageSearchService implements ImageSearchService {
 
@@ -32,7 +30,7 @@ public class PexelsImageSearchService implements ImageSearchService {
     }
 
     @Override
-    public String searchImage(ImageSearchRequest request) {
+    public ImagePayload searchImage(ImageSearchRequest request) {
         String keywords = request == null ? null : request.resolveQuery();
         if (!StringUtils.hasText(keywords) || !StringUtils.hasText(properties.getApiKey())) {
             log.warn("Pexels 图片检索已跳过：关键词或 API Key 为空");
@@ -56,7 +54,17 @@ public class PexelsImageSearchService implements ImageSearchService {
             if (source == null) {
                 return null;
             }
-            return StringUtils.hasText(source.landscape()) ? source.landscape() : source.original();
+            String url = StringUtils.hasText(source.landscape()) ? source.landscape() : source.original();
+            if (!StringUtils.hasText(url)) {
+                return null;
+            }
+            return ImagePayload.builder()
+                    .type(ImagePayloadType.URL)
+                    .content(url)
+                    .contentType("image/jpeg")
+                    .extension("jpg")
+                    .keyPrefix("pexels")
+                    .build();
         } catch (RestClientException e) {
             log.warn("Pexels 图片检索失败, keywords={}, error={}", keywords, e.getMessage());
             return null;

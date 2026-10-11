@@ -3,18 +3,16 @@ package com.aiarticle.service.image;
 import com.aiarticle.constant.PromptConstant;
 import com.aiarticle.enums.ImageMethodEnum;
 import com.aiarticle.util.AiModelClient;
-import com.aiarticle.util.CosFileClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 大模型生成 SVG 概念示意图，再上传 COS。
+ * 大模型生成 SVG 概念示意图，返回 Base64，由 {@link ImageCloudStore} 上传。
  * 尚未接入智能体分流，默认配图仍走 Pexels。
  */
 @Slf4j
@@ -26,15 +24,12 @@ public class SvgDiagramService implements ImageSearchService {
 
     private final AiModelClient aiModelClient;
 
-    private final CosFileClient cosFileClient;
-
-    public SvgDiagramService(AiModelClient aiModelClient, CosFileClient cosFileClient) {
+    public SvgDiagramService(AiModelClient aiModelClient) {
         this.aiModelClient = aiModelClient;
-        this.cosFileClient = cosFileClient;
     }
 
     @Override
-    public String searchImage(ImageSearchRequest request) {
+    public ImagePayload searchImage(ImageSearchRequest request) {
         String requirement = request == null ? null : request.resolveQuery();
         if (!StringUtils.hasText(requirement)) {
             return null;
@@ -47,11 +42,7 @@ public class SvgDiagramService implements ImageSearchService {
                 log.warn("大模型未返回可用 SVG");
                 return null;
             }
-            CosFileClient.CosUploadResult uploaded = cosFileClient.upload(
-                    svg.getBytes(StandardCharsets.UTF_8),
-                    "svg-diagram/" + UUID.randomUUID() + ".svg",
-                    "image/svg+xml");
-            return uploaded == null ? null : uploaded.url();
+            return ImagePayload.base64(svg.getBytes(StandardCharsets.UTF_8), "image/svg+xml", "svg", "svg-diagram");
         } catch (RuntimeException e) {
             log.warn("SVG 示意图生成失败, error={}", e.getMessage());
             return null;

@@ -1,20 +1,20 @@
 package com.aiarticle.service.image;
 
 /**
- * 图片检索服务抽象。
+ * 图片检索 / 生图策略抽象。
  * <p>
- * 智能体5只依赖本接口，不关心图片来自 Pexels、Unsplash 或其他图库。
- * 后续切换图片来源时新增实现类即可。
+ * 智能体5只依赖本接口。策略返回 {@link ImagePayload}（URL 或 Base64），
+ * 再由 {@link ImageCloudStore} 上传到云端得到可访问地址。
  */
 public interface ImageSearchService {
 
     /**
-     * 按通用配图请求取一张图。
+     * 按通用配图请求生成或检索一张图。
      *
      * @param request 关键词、prompt、位置等
-     * @return 可直接访问的图片 URL；未搜索到时返回 {@code null}
+     * @return URL 或 Base64 产物；未生成时返回 {@code null}
      */
-    String searchImage(ImageSearchRequest request);
+    ImagePayload searchImage(ImageSearchRequest request);
 
     /**
      * 获取当前图片检索方式。

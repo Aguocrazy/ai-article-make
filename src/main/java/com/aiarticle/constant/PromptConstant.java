@@ -98,20 +98,27 @@ public interface PromptConstant {
      * 智能体4：分析配图需求
      */
     String AGENT4_IMAGE_REQUIREMENTS_PROMPT = """
-            你是一位专业的新媒体编辑,擅长为文章配图。
+            你是一位专业的新媒体编辑,擅长为文章配图，并能选择合适的配图策略。
             
             根据以下文章内容,分析配图需求:
             主标题：{mainTitle}
             正文：
             {content}
             
+            可用配图方式(method)只能从下列取值中选择:
+            - PEXELS：写实/氛围类配图，适合封面和场景插图；用英文 keywords 检索
+            - ICONIFY：单图标装饰；用英文 keywords 检索图标
+            - MERMAID：流程、架构、时序等结构图；prompt 填完整 Mermaid 源码（不要 markdown 围栏）
+            - SVG_DIAGRAM：抽象概念示意图；prompt 用中文描述要表达的概念与关系
+            
             要求:
             1. 识别需要配图的位置(封面、关键章节等)
-            2. 建议配图数量: 3-5张
-            3. 为每个配图位置生成英文搜索关键词(适合 Pexels 图库检索)
-            4. 关键词要准确、具体,能检索到高质量图片
-            5. sectionTitle 必须与正文中的章节标题完全一致(用于定位插入位置)
-            6. position=1 为封面图,sectionTitle 留空
+            2. 建议配图数量: 3-5张，尽量混用多种 method，不要全部用同一种
+            3. 封面(position=1)优先 PEXELS；流程图/架构优先 MERMAID；概念对比优先 SVG_DIAGRAM；小图标点缀可用 ICONIFY
+            4. 每种方式都要填 keywords（英文，便于兜底检索）
+            5. MERMAID / SVG_DIAGRAM 必须额外填写 prompt；PEXELS / ICONIFY 的 prompt 可为空字符串
+            6. sectionTitle 必须与正文中的章节标题完全一致(用于定位插入位置)
+            7. position=1 为封面图,sectionTitle 留空
             
             请直接返回 JSON 格式,不要有其他内容:
             [
@@ -119,13 +126,25 @@ public interface PromptConstant {
                 "position": 1,
                 "type": "cover",
                 "sectionTitle": "",
-                "keywords": "AI technology office modern"
+                "method": "PEXELS",
+                "keywords": "AI technology office modern",
+                "prompt": ""
               },
               {
                 "position": 2,
                 "type": "section",
                 "sectionTitle": "章节标题（与正文完全一致）",
-                "keywords": "business success teamwork"
+                "method": "MERMAID",
+                "keywords": "system architecture flowchart",
+                "prompt": "flowchart TD\\n  A[用户] --> B[服务]"
+              },
+              {
+                "position": 3,
+                "type": "section",
+                "sectionTitle": "另一章节标题",
+                "method": "SVG_DIAGRAM",
+                "keywords": "concept diagram comparison",
+                "prompt": "用示意图对比集中式与分布式架构的核心差异"
               }
             ]
             """;

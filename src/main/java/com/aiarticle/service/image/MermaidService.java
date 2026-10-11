@@ -2,7 +2,6 @@ package com.aiarticle.service.image;
 
 import com.aiarticle.config.MermaidConfig;
 import com.aiarticle.enums.ImageMethodEnum;
-import com.aiarticle.util.CosFileClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -11,11 +10,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Mermaid 生图策略：调用本机 mmdc 渲染后上传 COS。
+ * Mermaid 生图策略：调用本机 mmdc 渲染，返回 Base64，由 {@link ImageCloudStore} 上传。
  * 尚未接入智能体分流，默认配图仍走 Pexels。
  */
 @Slf4j
@@ -24,15 +22,12 @@ public class MermaidService implements ImageSearchService {
 
     private final MermaidConfig mermaidConfig;
 
-    private final CosFileClient cosFileClient;
-
-    public MermaidService(MermaidConfig mermaidConfig, CosFileClient cosFileClient) {
+    public MermaidService(MermaidConfig mermaidConfig) {
         this.mermaidConfig = mermaidConfig;
-        this.cosFileClient = cosFileClient;
     }
 
     @Override
-    public String searchImage(ImageSearchRequest request) {
+    public ImagePayload searchImage(ImageSearchRequest request) {
         String source = request == null ? null : request.resolveQuery();
         if (!StringUtils.hasText(source)) {
             return null;
@@ -67,9 +62,7 @@ public class MermaidService implements ImageSearchService {
             }
 
             byte[] bytes = Files.readAllBytes(output);
-            CosFileClient.CosUploadResult uploaded = cosFileClient.upload(
-                    bytes, "mermaid/" + UUID.randomUUID() + "." + format, contentType(format));
-            return uploaded == null ? null : uploaded.url();
+            return ImagePayload.base64(bytes, contentType(format), format, "mermaid");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("Mermaid 生图被中断");

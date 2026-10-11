@@ -7,6 +7,8 @@ import com.aiarticle.exception.ThrowUtils;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.ImageRequirement;
 import com.aiarticle.model.state.ArticleState.ImageResult;
+import com.aiarticle.service.image.ImageCloudStore;
+import com.aiarticle.service.image.ImagePayload;
 import com.aiarticle.service.image.ImageSearchRequest;
 import com.aiarticle.service.image.ImageSearchService;
 import com.aiarticle.util.GsonUtils;
@@ -20,8 +22,9 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 智能体5：按智能体4给出的配图需求顺序检索图片。
+ * 智能体5：按智能体4给出的配图需求顺序取图。
  * 每完成一张图片就推送一次 {@code IMAGE_COMPLETE}，全部结果写回 ArticleState。
+ * method 由智能体4指定，经 Composite 分发到对应策略。
  */
 @Slf4j
 @Component
@@ -29,6 +32,9 @@ public class ImageAgent {
 
     @Resource
     private ImageSearchService imageSearchService;
+
+    @Resource
+    private ImageCloudStore imageCloudStore;
 
     /**
      * @param state         至少包含智能体4生成的 imageRequirements
@@ -59,21 +65,26 @@ public class ImageAgent {
     }
 
     private ImageResult search(ImageRequirement requirement) {
-        ThrowUtils.throwIf(requirement == null
-                        || requirement.getPosition() == null
-                        || !StringUtils.hasText(requirement.getKeywords()),
+        ThrowUtils.throwIf(requirement == null || requirement.getPosition() == null,
                 ErrorCode.PARAMS_ERROR, "配图需求参数不完整");
+        ThrowUtils.throwIf(!StringUtils.hasText(requirement.getKeywords())
+                        && !StringUtils.hasText(requirement.getPrompt()),
+                ErrorCode.PARAMS_ERROR, "配图需求缺少 keywords 或 prompt");
 
         String url = null;
         String method = null;
+        String requestedMethod = StringUtils.hasText(requirement.getMethod())
+                ? requirement.getMethod().trim()
+                : ImageMethodEnum.getDefaultSearchMethod().getValue();
         try {
-            url = imageSearchService.searchImage(toSearchRequest(requirement));
+            ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement, requestedMethod));
+            url = imageCloudStore.toPublicUrl(payload);
             if (StringUtils.hasText(url)) {
-                method = imageSearchService.getSearchMethod();
+                method = requestedMethod;
             }
         } catch (RuntimeException e) {
-            log.warn("图片检索失败，改用降级图片, position={}, keywords={}, error={}",
-                    requirement.getPosition(), requirement.getKeywords(), e.getMessage());
+            log.warn("图片生成失败，改用降级图片, position={}, method={}, error={}",
+                    requirement.getPosition(), requestedMethod, e.getMessage());
         }
 
         if (!StringUtils.hasText(url)) {
@@ -93,12 +104,14 @@ public class ImageAgent {
         return result;
     }
 
-    private static ImageSearchRequest toSearchRequest(ImageRequirement requirement) {
+    private static ImageSearchRequest toSearchRequest(ImageRequirement requirement, String method) {
         return ImageSearchRequest.builder()
                 .position(requirement.getPosition())
                 .type(requirement.getType())
                 .sectionTitle(requirement.getSectionTitle())
                 .keywords(requirement.getKeywords())
+                .prompt(requirement.getPrompt())
+                .method(method)
                 .build();
     }
 }

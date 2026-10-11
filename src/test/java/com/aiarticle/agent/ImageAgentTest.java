@@ -4,7 +4,8 @@ import com.aiarticle.enums.SseMessageTypeEnum;
 import com.aiarticle.exception.BusinessException;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.ImageRequirement;
-import com.aiarticle.model.state.ArticleState.ImageResult;
+import com.aiarticle.service.image.ImageCloudStore;
+import com.aiarticle.service.image.ImagePayload;
 import com.aiarticle.service.image.ImageSearchRequest;
 import com.aiarticle.service.image.ImageSearchService;
 import com.aiarticle.util.GsonUtils;
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,6 +34,9 @@ class ImageAgentTest {
     private ImageSearchService imageSearchService;
 
     @Mock
+    private ImageCloudStore imageCloudStore;
+
+    @Mock
     private Consumer<String> streamHandler;
 
     @InjectMocks
@@ -39,16 +44,20 @@ class ImageAgentTest {
 
     @Test
     void generate_searchesSequentially_fallsBackAndPushesEachImage() {
-        ImageRequirement cover = requirement(1, "cover", "", "future office");
-        ImageRequirement section = requirement(2, "section", "第一章", "teamwork");
+        ImageRequirement cover = requirement(1, "cover", "", "PEXELS", "future office", null);
+        ImageRequirement section = requirement(2, "section", "第一章", "MERMAID", "pipeline", "flowchart LR\n  A --> B");
         ArticleState state = new ArticleState();
         state.setImageRequirements(List.of(cover, section));
 
-        when(imageSearchService.searchImage(request(1, "cover", "", "future office")))
-                .thenReturn("https://img/cover.jpg");
-        when(imageSearchService.searchImage(request(2, "section", "第一章", "teamwork")))
+        when(imageSearchService.searchImage(request(1, "cover", "", "PEXELS", "future office", null)))
+                .thenReturn(ImagePayload.url("https://img/cover.jpg"));
+        when(imageSearchService.searchImage(request(2, "section", "第一章", "MERMAID", "pipeline",
+                "flowchart LR\n  A --> B")))
                 .thenReturn(null);
-        when(imageSearchService.getSearchMethod()).thenReturn("PEXELS");
+        when(imageCloudStore.toPublicUrl(any())).thenAnswer(invocation -> {
+            ImagePayload payload = invocation.getArgument(0);
+            return payload == null ? null : payload.getContent();
+        });
         when(imageSearchService.getFallbackImageUrl(2)).thenReturn("https://img/fallback.jpg");
 
         ArticleState result = imageAgent.generate(state, streamHandler);
@@ -61,10 +70,11 @@ class ImageAgentTest {
         assertEquals("https://img/fallback.jpg", state.getImages().get(1).getUrl());
 
         InOrder order = inOrder(imageSearchService, streamHandler);
-        order.verify(imageSearchService).searchImage(request(1, "cover", "", "future office"));
+        order.verify(imageSearchService).searchImage(request(1, "cover", "", "PEXELS", "future office", null));
         order.verify(streamHandler).accept(SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix()
                 + GsonUtils.toJson(state.getImages().get(0)));
-        order.verify(imageSearchService).searchImage(request(2, "section", "第一章", "teamwork"));
+        order.verify(imageSearchService).searchImage(request(2, "section", "第一章", "MERMAID", "pipeline",
+                "flowchart LR\n  A --> B"));
         order.verify(imageSearchService).getFallbackImageUrl(2);
         order.verify(streamHandler).accept(SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix()
                 + GsonUtils.toJson(state.getImages().get(1)));
@@ -73,8 +83,8 @@ class ImageAgentTest {
     @Test
     void generate_usesFallbackWhenSearchThrows() {
         ArticleState state = new ArticleState();
-        state.setImageRequirements(List.of(requirement(1, "cover", "", "broken")));
-        when(imageSearchService.searchImage(request(1, "cover", "", "broken")))
+        state.setImageRequirements(List.of(requirement(1, "cover", "", null, "broken", null)));
+        when(imageSearchService.searchImage(request(1, "cover", "", "PEXELS", "broken", null)))
                 .thenThrow(new RuntimeException("图库不可用"));
         when(imageSearchService.getFallbackImageUrl(1)).thenReturn("https://img/fallback.jpg");
 
@@ -96,25 +106,31 @@ class ImageAgentTest {
     @Test
     void generate_rejectsNullStreamHandler() {
         ArticleState state = new ArticleState();
-        state.setImageRequirements(List.of(requirement(1, "cover", "", "cover")));
+        state.setImageRequirements(List.of(requirement(1, "cover", "", "PEXELS", "cover", null)));
         assertThrows(BusinessException.class, () -> imageAgent.generate(state, null));
     }
 
-    private ImageSearchRequest request(int position, String type, String sectionTitle, String keywords) {
+    private ImageSearchRequest request(
+            int position, String type, String sectionTitle, String method, String keywords, String prompt) {
         return ImageSearchRequest.builder()
                 .position(position)
                 .type(type)
                 .sectionTitle(sectionTitle)
+                .method(method)
                 .keywords(keywords)
+                .prompt(prompt)
                 .build();
     }
 
-    private ImageRequirement requirement(int position, String type, String sectionTitle, String keywords) {
+    private ImageRequirement requirement(
+            int position, String type, String sectionTitle, String method, String keywords, String prompt) {
         ImageRequirement requirement = new ImageRequirement();
         requirement.setPosition(position);
         requirement.setType(type);
         requirement.setSectionTitle(sectionTitle);
+        requirement.setMethod(method);
         requirement.setKeywords(keywords);
+        requirement.setPrompt(prompt);
         return requirement;
     }
 }

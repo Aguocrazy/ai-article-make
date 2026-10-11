@@ -182,9 +182,20 @@ public class ArticleState implements Serializable {
         private String sectionTitle;
 
         /**
-         * 关键词
+         * 关键词（图库 / Iconify 检索用）
          */
         private String keywords;
+
+        /**
+         * 配图方式，对应 {@link com.aiarticle.enums.ImageMethodEnum}。
+         * 为空时默认走 Pexels。
+         */
+        private String method;
+
+        /**
+         * Mermaid 源码或 SVG 示意图需求说明；检索类策略可为空。
+         */
+        private String prompt;
     }
 
     /**
