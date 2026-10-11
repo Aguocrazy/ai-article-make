@@ -57,7 +57,7 @@ ai-article-make/
 │   ├── task/            # ArticleGenerationTask 串行编排
 │   ├── util/            # 大模型调用、JSON、CosFileClient
 │   └── service/
-│       └── image/       # 配图策略：Pexels（默认）、MermaidService
+│       └── image/       # 配图策略与 ImageCloudStore 上传
 ├── src/main/resources/
 │   ├── application.yml          # 数据源、Redis、DashScope、Pexels、Mermaid、COS、Knife4j
 │   └── application.properties   # 端口 8080、日志级别
@@ -353,12 +353,13 @@ SSE 实现要点：
 - `OutlineAgent`：读取标题和创作设定并流式生成大纲，写入 `ArticleState.outline`
 - `ContentAgent`：读取标题、大纲和创作设定并流式生成 Markdown 正文，写入 `ArticleState.content`
 - `ImageRequirementAgent`：读取主标题和正文，非流式分析配图需求，写入 `ArticleState.imageRequirements`
-- `ImageAgent`：逐项调用 `ImageSearchService.searchImage(ImageSearchRequest)` 取图，写入 `ArticleState.images`；封面同步写入 `coverImage`
+- `ImageAgent`：逐项调用 `ImageSearchService.searchImage` 得到 URL / Base64，再经 `ImageCloudStore` 上传 COS，写入 `ArticleState.images`；封面同步写入 `coverImage`
 - `ArticleMergeAgent`：逐行扫描正文，在匹配的 `##` 章节标题后插入 Markdown 图片，写入 `ArticleState.fullContent`
 
 各智能体通过同一份 `ArticleState` 传递结果；大纲和正文增量分别带
 `AGENT2_STREAMING:`、`AGENT3_STREAMING:` 前缀交给 `Consumer<String>`。
-`ImageAgent` 只依赖 `ImageSearchService`（关键词 / prompt、检索方式、降级 URL）。
+`ImageAgent` 依赖 `ImageSearchService` 与 `ImageCloudStore`。
+策略只产出 `ImagePayload`（`URL` 或 `BASE64`），不直接上传；`ImageCloudStore` 按形态转存 COS 后得到公开 URL。
 每完成一张图片就以 `IMAGE_COMPLETE:` 加图片结果 JSON 推送；检索无结果或异常时使用降级图片。
 
 配图方式见 `ImageMethodEnum`（`PEXELS`、`MERMAID`、`NANO_BANANA`、`ICONIFY` 等）。
@@ -372,14 +373,22 @@ SSE 实现要点：
 未配置 Key、API 异常或无结果时，按位置循环使用 `image.pexels.fallback-urls`。
 Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photos by Pexels” 以满足来源标注。
 
-`MermaidService` 读取 `MermaidConfig`，把请求里的 Mermaid 源码交给本机 `mmdc` 渲成 svg/png/pdf，再经 `CosFileClient` 上传，返回可访问 URL。
-源码为空、CLI 失败或 COS 未配置时返回 `null`。IDEA 启动若找不到 `mmdc`，把 `mermaid.cli-command` 改成绝对路径。
+生图产物统一为 `ImagePayload`，再由 `ImageCloudStore.toPublicUrl` 上传：
 
-`IconifyService` 调用 [Iconify `/search?query=`](https://iconify.design/docs/api/search.html) 按关键词检索，取第一条 `prefix:name`，再请求 `/{prefix}/{name}.svg` 得到 SVG。
-优先经 `CosFileClient` 上传；COS 未配置时返回 Iconify 公开 SVG 地址。
+| 策略 | 返回形态 | 说明 |
+|------|----------|------|
+| `PexelsImageSearchService` | `URL` | 图库 CDN 地址；转存 COS 失败则沿用原 URL |
+| `MermaidService` | `BASE64` | 本机 `mmdc` 渲出的 svg/png/pdf |
+| `IconifyService` | `BASE64`（拿不到文件时为 `URL`） | 检索后拉 SVG |
+| `SvgDiagramService` | `BASE64` | 大模型生成的 SVG |
 
-`SvgDiagramService` 用 `PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT` 调大模型生成概念示意图 SVG，再上传 COS。
-需求文本来自 `ImageSearchRequest` 的 prompt / keywords。模型若包了 markdown 围栏会先剥掉。COS 未配置或生成失败时返回 `null`。
+`BASE64` 会解码后上传 COS；`URL` 会先下载再上传，下载失败则保留原地址。
+
+`MermaidService` 读取 `MermaidConfig`，把源码交给本机 `mmdc`。源码为空或 CLI 失败返回 `null`。IDEA 启动若找不到 `mmdc`，把 `mermaid.cli-command` 改成绝对路径。
+
+`IconifyService` 调用 [Iconify `/search?query=`](https://iconify.design/docs/api/search.html)，取第一条再请求 SVG。
+
+`SvgDiagramService` 用 `PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT` 调大模型；需求来自 prompt / keywords，会剥掉 markdown 围栏。
 
 ### 腾讯云 COS
 

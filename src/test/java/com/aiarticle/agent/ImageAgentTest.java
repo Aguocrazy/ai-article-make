@@ -5,6 +5,8 @@ import com.aiarticle.exception.BusinessException;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.ImageRequirement;
 import com.aiarticle.model.state.ArticleState.ImageResult;
+import com.aiarticle.service.image.ImageCloudStore;
+import com.aiarticle.service.image.ImagePayload;
 import com.aiarticle.service.image.ImageSearchRequest;
 import com.aiarticle.service.image.ImageSearchService;
 import com.aiarticle.util.GsonUtils;
@@ -21,6 +23,7 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +33,9 @@ class ImageAgentTest {
 
     @Mock
     private ImageSearchService imageSearchService;
+
+    @Mock
+    private ImageCloudStore imageCloudStore;
 
     @Mock
     private Consumer<String> streamHandler;
@@ -45,9 +51,13 @@ class ImageAgentTest {
         state.setImageRequirements(List.of(cover, section));
 
         when(imageSearchService.searchImage(request(1, "cover", "", "future office")))
-                .thenReturn("https://img/cover.jpg");
+                .thenReturn(ImagePayload.url("https://img/cover.jpg"));
         when(imageSearchService.searchImage(request(2, "section", "第一章", "teamwork")))
                 .thenReturn(null);
+        when(imageCloudStore.toPublicUrl(any())).thenAnswer(invocation -> {
+            ImagePayload payload = invocation.getArgument(0);
+            return payload == null ? null : payload.getContent();
+        });
         when(imageSearchService.getSearchMethod()).thenReturn("PEXELS");
         when(imageSearchService.getFallbackImageUrl(2)).thenReturn("https://img/fallback.jpg");
 

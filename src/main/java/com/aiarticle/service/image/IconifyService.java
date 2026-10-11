@@ -1,8 +1,6 @@
 package com.aiarticle.service.image;
 
 import com.aiarticle.enums.ImageMethodEnum;
-import com.aiarticle.exception.BusinessException;
-import com.aiarticle.util.CosFileClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -11,10 +9,9 @@ import org.springframework.web.client.RestClientException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.UUID;
 
 /**
- * Iconify 生图策略：按关键词检索图标，拉取 SVG，优先上传 COS。
+ * Iconify 生图策略：按关键词检索图标并拿到 SVG，返回 Base64 或公开 URL。
  * 尚未接入智能体分流，默认配图仍走 Pexels。
  *
  * @see <a href="https://iconify.design/docs/api/search.html">Iconify /search</a>
@@ -28,19 +25,13 @@ public class IconifyService implements ImageSearchService {
 
     private final IconifyProperties properties;
 
-    private final CosFileClient cosFileClient;
-
-    public IconifyService(
-            RestClient.Builder restClientBuilder,
-            IconifyProperties properties,
-            CosFileClient cosFileClient) {
+    public IconifyService(RestClient.Builder restClientBuilder, IconifyProperties properties) {
         this.properties = properties;
-        this.cosFileClient = cosFileClient;
         this.restClient = restClientBuilder.baseUrl(properties.getBaseUrl()).build();
     }
 
     @Override
-    public String searchImage(ImageSearchRequest request) {
+    public ImagePayload searchImage(ImageSearchRequest request) {
         String query = request == null ? null : request.resolveQuery();
         if (!StringUtils.hasText(query)) {
             return null;
@@ -70,19 +61,10 @@ public class IconifyService implements ImageSearchService {
                     .uri("/{prefix}/{name}.svg", prefix, name)
                     .retrieve()
                     .body(String.class);
-            if (!StringUtils.hasText(svg)) {
-                return publicSvgUrl;
+            if (StringUtils.hasText(svg)) {
+                return ImagePayload.base64(svg.getBytes(StandardCharsets.UTF_8), "image/svg+xml", "svg", "iconify");
             }
-            try {
-                CosFileClient.CosUploadResult uploaded = cosFileClient.upload(
-                        svg.getBytes(StandardCharsets.UTF_8),
-                        "iconify/" + UUID.randomUUID() + ".svg",
-                        "image/svg+xml");
-                return uploaded == null ? publicSvgUrl : uploaded.url();
-            } catch (BusinessException e) {
-                log.warn("Iconify SVG 未上传 COS，改用公开地址, error={}", e.getMessage());
-                return publicSvgUrl;
-            }
+            return ImagePayload.url(publicSvgUrl);
         } catch (RestClientException e) {
             log.warn("Iconify 检索失败, query={}, error={}", query, e.getMessage());
             return null;

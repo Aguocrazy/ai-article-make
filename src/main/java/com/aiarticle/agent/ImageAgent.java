@@ -7,6 +7,8 @@ import com.aiarticle.exception.ThrowUtils;
 import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.ImageRequirement;
 import com.aiarticle.model.state.ArticleState.ImageResult;
+import com.aiarticle.service.image.ImageCloudStore;
+import com.aiarticle.service.image.ImagePayload;
 import com.aiarticle.service.image.ImageSearchRequest;
 import com.aiarticle.service.image.ImageSearchService;
 import com.aiarticle.util.GsonUtils;
@@ -29,6 +31,9 @@ public class ImageAgent {
 
     @Resource
     private ImageSearchService imageSearchService;
+
+    @Resource
+    private ImageCloudStore imageCloudStore;
 
     /**
      * @param state         至少包含智能体4生成的 imageRequirements
@@ -67,7 +72,8 @@ public class ImageAgent {
         String url = null;
         String method = null;
         try {
-            url = imageSearchService.searchImage(toSearchRequest(requirement));
+            ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement));
+            url = imageCloudStore.toPublicUrl(payload);
             if (StringUtils.hasText(url)) {
                 method = imageSearchService.getSearchMethod();
             }
