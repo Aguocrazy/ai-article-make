@@ -106,19 +106,19 @@ public interface PromptConstant {
             {content}
             
             可用配图方式(method)只能从下列取值中选择:
-            - PEXELS：写实/氛围类配图，适合封面和场景插图；用英文 keywords 检索
-            - ICONIFY：单图标装饰；用英文 keywords 检索图标
-            - MERMAID：流程、架构、时序等结构图；prompt 填完整 Mermaid 源码（不要 markdown 围栏）
-            - SVG_DIAGRAM：抽象概念示意图；prompt 用中文描述要表达的概念与关系
+            - AI_GENERATE：优先使用。大模型生成概念/信息示意图；prompt 用中文描述要表达的概念与关系
+            - MERMAID：优先使用。流程、架构、时序等结构图；prompt 填完整 Mermaid 源码（不要 markdown 围栏）
+            - PEXELS：兜底。仅当确实不适合示意图时再用；写实/氛围配图，用英文 keywords 检索
             
             要求:
             1. 识别需要配图的位置(封面、关键章节等)
-            2. 建议配图数量: 3-5张，尽量混用多种 method，不要全部用同一种
-            3. 封面(position=1)优先 PEXELS；流程图/架构优先 MERMAID；概念对比优先 SVG_DIAGRAM；小图标点缀可用 ICONIFY
-            4. 每种方式都要填 keywords（英文，便于兜底检索）
-            5. MERMAID / SVG_DIAGRAM 必须额外填写 prompt；PEXELS / ICONIFY 的 prompt 可为空字符串
-            6. sectionTitle 必须与正文中的章节标题完全一致(用于定位插入位置)
-            7. position=1 为封面图,sectionTitle 留空
+            2. 建议配图数量: 3-5张
+            3. 绝大多数位置应使用 AI_GENERATE 或 MERMAID；不要默认选 PEXELS
+            4. 流程图/架构/时序选 MERMAID；抽象概念、对比、信息图选 AI_GENERATE
+            5. 每种方式都要填 keywords（英文，供 PEXELS 兜底检索）
+            6. MERMAID / AI_GENERATE 必须额外填写 prompt；若选 PEXELS，prompt 可为空字符串
+            7. sectionTitle 必须与正文中的章节标题完全一致(用于定位插入位置)
+            8. position=1 为封面图,sectionTitle 留空；封面也优先 AI_GENERATE（主题信息图）或 MERMAID
             
             请直接返回 JSON 格式,不要有其他内容:
             [
@@ -126,9 +126,9 @@ public interface PromptConstant {
                 "position": 1,
                 "type": "cover",
                 "sectionTitle": "",
-                "method": "PEXELS",
-                "keywords": "AI technology office modern",
-                "prompt": ""
+                "method": "AI_GENERATE",
+                "keywords": "AI technology concept illustration",
+                "prompt": "用信息图概括文章核心主题与价值"
               },
               {
                 "position": 2,
@@ -142,7 +142,7 @@ public interface PromptConstant {
                 "position": 3,
                 "type": "section",
                 "sectionTitle": "另一章节标题",
-                "method": "SVG_DIAGRAM",
+                "method": "AI_GENERATE",
                 "keywords": "concept diagram comparison",
                 "prompt": "用示意图对比集中式与分布式架构的核心差异"
               }

@@ -73,7 +73,7 @@ public class PexelsImageSearchService implements ImageSearchService {
 
     @Override
     public String getSearchMethod() {
-        return ImageMethodEnum.getDefaultSearchMethod().getValue();
+        return ImageMethodEnum.PEXELS.getValue();
     }
 
     @Override

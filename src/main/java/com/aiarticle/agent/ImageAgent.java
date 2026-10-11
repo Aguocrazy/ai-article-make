@@ -19,12 +19,12 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
  * 智能体5：按智能体4给出的配图需求顺序取图。
- * 每完成一张图片就推送一次 {@code IMAGE_COMPLETE}，全部结果写回 ArticleState。
- * method 由智能体4指定，经 Composite 分发到对应策略。
+ * 优先走 AI_GENERATE / MERMAID；失败时用 PEXELS 兜底检索，再不行用固定图。
  */
 @Slf4j
 @Component
@@ -71,25 +71,26 @@ public class ImageAgent {
                         && !StringUtils.hasText(requirement.getPrompt()),
                 ErrorCode.PARAMS_ERROR, "配图需求缺少 keywords 或 prompt");
 
-        String url = null;
-        String method = null;
         String requestedMethod = StringUtils.hasText(requirement.getMethod())
-                ? requirement.getMethod().trim()
+                ? requirement.getMethod().trim().toUpperCase(Locale.ROOT)
                 : ImageMethodEnum.getDefaultSearchMethod().getValue();
-        try {
-            ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement, requestedMethod));
-            url = imageCloudStore.toPublicUrl(payload);
+        String fallbackMethod = ImageMethodEnum.getFallbackMethod().getValue();
+
+        String url = tryGenerate(requirement, requestedMethod);
+        String method = StringUtils.hasText(url) ? requestedMethod : null;
+
+        if (!StringUtils.hasText(url) && !fallbackMethod.equalsIgnoreCase(requestedMethod)) {
+            log.warn("主策略失败，改用 Pexels 兜底, position={}, method={}",
+                    requirement.getPosition(), requestedMethod);
+            url = tryGenerate(requirement, fallbackMethod);
             if (StringUtils.hasText(url)) {
-                method = requestedMethod;
+                method = fallbackMethod;
             }
-        } catch (RuntimeException e) {
-            log.warn("图片生成失败，改用降级图片, position={}, method={}, error={}",
-                    requirement.getPosition(), requestedMethod, e.getMessage());
         }
 
         if (!StringUtils.hasText(url)) {
             url = imageSearchService.getFallbackImageUrl(requirement.getPosition());
-            method = ImageMethodEnum.getFallbackMethod().getValue();
+            method = fallbackMethod;
         }
         ThrowUtils.throwIf(!StringUtils.hasText(url),
                 ErrorCode.OPERATION_ERROR, "图片检索及降级均失败");
@@ -102,6 +103,17 @@ public class ImageAgent {
         result.setSectionTitle(requirement.getSectionTitle());
         result.setDescription(requirement.getType());
         return result;
+    }
+
+    private String tryGenerate(ImageRequirement requirement, String method) {
+        try {
+            ImagePayload payload = imageSearchService.searchImage(toSearchRequest(requirement, method));
+            return imageCloudStore.toPublicUrl(payload);
+        } catch (RuntimeException e) {
+            log.warn("图片生成失败, position={}, method={}, error={}",
+                    requirement.getPosition(), method, e.getMessage());
+            return null;
+        }
     }
 
     private static ImageSearchRequest toSearchRequest(ImageRequirement requirement, String method) {

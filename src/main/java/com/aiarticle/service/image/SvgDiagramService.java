@@ -12,8 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 大模型生成 SVG 概念示意图，返回 Base64，由 {@link ImageCloudStore} 上传。
- * 尚未接入智能体分流，默认配图仍走 Pexels。
+ * 大模型 AI 生图：生成 SVG 概念示意图，返回 Base64，由 {@link ImageCloudStore} 上传。
  */
 @Slf4j
 @Service
@@ -51,7 +50,7 @@ public class SvgDiagramService implements ImageSearchService {
 
     @Override
     public String getSearchMethod() {
-        return ImageMethodEnum.SVG_DIAGRAM.getValue();
+        return ImageMethodEnum.AI_GENERATE.getValue();
     }
 
     @Override

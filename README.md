@@ -362,11 +362,11 @@ SSE 实现要点：
 策略只产出 `ImagePayload`（`URL` 或 `BASE64`），不直接上传；`ImageCloudStore` 按形态转存 COS 后得到公开 URL。
 每完成一张图片就以 `IMAGE_COMPLETE:` 加图片结果 JSON 推送；检索无结果或异常时使用降级图片。
 
-配图方式见 `ImageMethodEnum`（`PEXELS`、`MERMAID`、`NANO_BANANA`、`ICONIFY` 等）。
+配图方式见 `ImageMethodEnum`：优先 `AI_GENERATE`、`MERMAID`；`PEXELS` 作兜底。
 通用入参为 `ImageSearchRequest`（`keywords` 检索、`prompt` 生图 / 图表源码、`method` 指定策略）。
 默认注入 `CompositeImageSearchService`（`@Primary`）：按智能体4给出的 `method` 分发到
-`PexelsImageSearchService` / `MermaidService` / `IconifyService` / `SvgDiagramService`。
-未指定或未实现的 method（如 `NANO_BANANA`）回落 Pexels；失败时仍用 Pexels 配置的兜底图。
+`SvgDiagramService`（`AI_GENERATE`）/ `MermaidService` / `PexelsImageSearchService`。
+主策略失败会再试 Pexels 检索；仍失败则用 `image.pexels.fallback-urls` 固定图。
 
 `PexelsImageSearchService` 按 [Pexels API](https://www.pexels.com/api/documentation/) 调用
 `GET https://api.pexels.com/v1/search`，`Authorization` 请求头带 Key，
@@ -380,16 +380,13 @@ Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photo
 |------|----------|------|
 | `PexelsImageSearchService` | `URL` | 图库 CDN 地址；转存 COS 失败则沿用原 URL |
 | `MermaidService` | `BASE64` | 本机 `mmdc` 渲出的 svg/png/pdf |
-| `IconifyService` | `BASE64`（拿不到文件时为 `URL`） | 检索后拉 SVG |
-| `SvgDiagramService` | `BASE64` | 大模型生成的 SVG |
+| `SvgDiagramService`（`AI_GENERATE`） | `BASE64` | 大模型生成的 SVG |
 
 `BASE64` 会解码后上传 COS；`URL` 会先下载再上传，下载失败则保留原地址。
 
 `MermaidService` 读取 `MermaidConfig`，把源码交给本机 `mmdc`。源码为空或 CLI 失败返回 `null`。IDEA 启动若找不到 `mmdc`，把 `mermaid.cli-command` 改成绝对路径。
 
-`IconifyService` 调用 [Iconify `/search?query=`](https://iconify.design/docs/api/search.html)，取第一条再请求 SVG。
-
-`SvgDiagramService` 用 `PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT` 调大模型；需求来自 prompt / keywords，会剥掉 markdown 围栏。
+`SvgDiagramService`（method=`AI_GENERATE`）用 `PromptConstant.SVG_DIAGRAM_GENERATION_PROMPT` 调大模型；需求来自 prompt / keywords，会剥掉 markdown 围栏。
 
 ### 腾讯云 COS
 
@@ -407,7 +404,7 @@ Pexels 默认限额每小时 200 次、每月 20,000 次；界面保留 “Photo
 已具备：用户表与文章表、Session 登录、管理员 CRUD、跨域、接口文档、Vue 登录 / 注册 / 创作台，
 标题 → 大纲 → 正文 → 配图需求 → 图片检索 → 图文合成的异步 SSE 生成（5 线程、零队列），
 文章删除 / 详情编辑保存、创作设定写入提示词、雪花 ID 以字符串返回以免前端精度丢失。
-配图由智能体4选择 `PEXELS` / `MERMAID` / `ICONIFY` / `SVG_DIAGRAM`，智能体5按 method 分发并经 COS 落图。
+配图由智能体4优先选择 `AI_GENERATE` / `MERMAID`，智能体5按 method 分发；失败时 Pexels 兜底并经 COS 落图。
 工作台「我的文章」通过 `/article/list/page/vo` 与 `/article/get/{id}` 读库，不再用本机 localStorage。
 
 扩展数据库时新增编号脚本并在 `sql/CHANGELOG.md` 登记，不要改已执行过的 SQL 文件。

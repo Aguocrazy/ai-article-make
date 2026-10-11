@@ -20,7 +20,7 @@ public interface ImageSearchService {
      * 获取当前图片检索方式。
      * <p>
      * 用于记录 {@code ArticleState.ImageResult.method}，对应 {@code ImageMethodEnum}，
-     * 例如 {@code PEXELS}、{@code NANO_BANANA} 或降级 {@code PICSUM}。
+     * 例如 {@code AI_GENERATE}、{@code MERMAID}，兜底为 {@code PEXELS}。
      *
      * @return 图片检索方式标识
      */

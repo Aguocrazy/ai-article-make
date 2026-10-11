@@ -182,7 +182,7 @@ public class ArticleState implements Serializable {
         private String sectionTitle;
 
         /**
-         * 关键词（图库 / Iconify 检索用）
+         * 关键词（图库检索用）
          */
         private String keywords;
 

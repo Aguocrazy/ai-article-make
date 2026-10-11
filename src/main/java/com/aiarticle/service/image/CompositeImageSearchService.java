@@ -25,14 +25,12 @@ public class CompositeImageSearchService implements ImageSearchService {
     public CompositeImageSearchService(
             PexelsImageSearchService pexelsImageSearchService,
             MermaidService mermaidService,
-            IconifyService iconifyService,
             SvgDiagramService svgDiagramService) {
         this.pexelsImageSearchService = pexelsImageSearchService;
         this.strategies = Map.of(
                 ImageMethodEnum.PEXELS.getValue(), pexelsImageSearchService,
                 ImageMethodEnum.MERMAID.getValue(), mermaidService,
-                ImageMethodEnum.ICONIFY.getValue(), iconifyService,
-                ImageMethodEnum.SVG_DIAGRAM.getValue(), svgDiagramService);
+                ImageMethodEnum.AI_GENERATE.getValue(), svgDiagramService);
     }
 
     @Override

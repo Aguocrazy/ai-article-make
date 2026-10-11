@@ -23,9 +23,6 @@ class CompositeImageSearchServiceTest {
     private MermaidService mermaidService;
 
     @Mock
-    private IconifyService iconifyService;
-
-    @Mock
     private SvgDiagramService svgDiagramService;
 
     private CompositeImageSearchService composite;
@@ -33,37 +30,46 @@ class CompositeImageSearchServiceTest {
     @BeforeEach
     void setUp() {
         composite = new CompositeImageSearchService(
-                pexelsImageSearchService, mermaidService, iconifyService, svgDiagramService);
+                pexelsImageSearchService, mermaidService, svgDiagramService);
     }
 
     @Test
-    void routesMermaidByMethod() {
-        ImageSearchRequest request = ImageSearchRequest.builder()
+    void routesMermaidAndAiGenerateByMethod() {
+        ImageSearchRequest mermaidReq = ImageSearchRequest.builder()
                 .method(ImageMethodEnum.MERMAID.getValue())
                 .prompt("flowchart LR\n  A --> B")
                 .build();
-        ImagePayload payload = ImagePayload.base64("x".getBytes(), "image/svg+xml", "svg", "mermaid");
-        when(mermaidService.searchImage(request)).thenReturn(payload);
+        ImageSearchRequest aiReq = ImageSearchRequest.builder()
+                .method(ImageMethodEnum.AI_GENERATE.getValue())
+                .prompt("对比两种架构")
+                .build();
+        ImagePayload mermaidPayload = ImagePayload.base64("x".getBytes(), "image/svg+xml", "svg", "mermaid");
+        ImagePayload aiPayload = ImagePayload.base64("y".getBytes(), "image/svg+xml", "svg", "svg-diagram");
+        when(mermaidService.searchImage(mermaidReq)).thenReturn(mermaidPayload);
+        when(svgDiagramService.searchImage(aiReq)).thenReturn(aiPayload);
 
-        assertSame(payload, composite.searchImage(request));
-        verify(mermaidService).searchImage(request);
-        verifyNoInteractions(pexelsImageSearchService, iconifyService, svgDiagramService);
+        assertSame(mermaidPayload, composite.searchImage(mermaidReq));
+        assertSame(aiPayload, composite.searchImage(aiReq));
+        verify(mermaidService).searchImage(mermaidReq);
+        verify(svgDiagramService).searchImage(aiReq);
+        verifyNoInteractions(pexelsImageSearchService);
     }
 
     @Test
-    void routesDefaultAndUnknownToPexels() {
+    void routesBlankToAiGenerateAndUnknownToPexels() {
         ImageSearchRequest blank = ImageSearchRequest.builder().keywords("office").build();
         ImageSearchRequest unknown = ImageSearchRequest.builder()
-                .method("NANO_BANANA")
+                .method("UNKNOWN")
                 .keywords("office")
                 .build();
-        ImagePayload payload = ImagePayload.url("https://img/a.jpg");
-        when(pexelsImageSearchService.searchImage(blank)).thenReturn(payload);
-        when(pexelsImageSearchService.searchImage(unknown)).thenReturn(payload);
+        ImagePayload aiPayload = ImagePayload.base64("z".getBytes(), "image/svg+xml", "svg", "svg-diagram");
+        ImagePayload pexelsPayload = ImagePayload.url("https://img/a.jpg");
+        when(svgDiagramService.searchImage(blank)).thenReturn(aiPayload);
+        when(pexelsImageSearchService.searchImage(unknown)).thenReturn(pexelsPayload);
 
-        assertSame(payload, composite.searchImage(blank));
-        assertSame(payload, composite.searchImage(unknown));
-        verifyNoInteractions(mermaidService, iconifyService, svgDiagramService);
+        assertSame(aiPayload, composite.searchImage(blank));
+        assertSame(pexelsPayload, composite.searchImage(unknown));
+        verifyNoInteractions(mermaidService);
     }
 
     @Test

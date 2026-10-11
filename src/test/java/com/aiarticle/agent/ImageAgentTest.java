@@ -6,9 +6,6 @@ import com.aiarticle.model.state.ArticleState;
 import com.aiarticle.model.state.ArticleState.ImageRequirement;
 import com.aiarticle.service.image.ImageCloudStore;
 import com.aiarticle.service.image.ImagePayload;
-import com.aiarticle.model.state.ArticleState.ImageResult;
-import com.aiarticle.service.image.ImageCloudStore;
-import com.aiarticle.service.image.ImagePayload;
 import com.aiarticle.service.image.ImageSearchRequest;
 import com.aiarticle.service.image.ImageSearchService;
 import com.aiarticle.util.GsonUtils;
@@ -46,55 +43,65 @@ class ImageAgentTest {
     private ImageAgent imageAgent;
 
     @Test
-    void generate_searchesSequentially_fallsBackAndPushesEachImage() {
-        ImageRequirement cover = requirement(1, "cover", "", "PEXELS", "future office", null);
+    void generate_fallsBackToPexelsWhenMermaidFails() {
+        ImageRequirement cover = requirement(1, "cover", "", "AI_GENERATE", "future office", "主题信息图");
         ImageRequirement section = requirement(2, "section", "第一章", "MERMAID", "pipeline", "flowchart LR\n  A --> B");
         ArticleState state = new ArticleState();
         state.setImageRequirements(List.of(cover, section));
 
-        when(imageSearchService.searchImage(request(1, "cover", "", "PEXELS", "future office", null)))
-                .thenReturn(ImagePayload.url("https://img/cover.jpg"));
+        when(imageSearchService.searchImage(request(1, "cover", "", "AI_GENERATE", "future office", "主题信息图")))
+                .thenReturn(ImagePayload.base64("x".getBytes(), "image/svg+xml", "svg", "svg-diagram"));
         when(imageSearchService.searchImage(request(2, "section", "第一章", "MERMAID", "pipeline",
                 "flowchart LR\n  A --> B")))
                 .thenReturn(null);
+        when(imageSearchService.searchImage(request(2, "section", "第一章", "PEXELS", "pipeline",
+                "flowchart LR\n  A --> B")))
+                .thenReturn(ImagePayload.url("https://img/pexels-fallback.jpg"));
         when(imageCloudStore.toPublicUrl(any())).thenAnswer(invocation -> {
             ImagePayload payload = invocation.getArgument(0);
-            return payload == null ? null : payload.getContent();
+            if (payload == null) {
+                return null;
+            }
+            return payload.getContent() != null && payload.getContent().startsWith("http")
+                    ? payload.getContent()
+                    : "https://cos/ai.svg";
         });
-        when(imageSearchService.getFallbackImageUrl(2)).thenReturn("https://img/fallback.jpg");
 
         ArticleState result = imageAgent.generate(state, streamHandler);
 
         assertSame(state, result);
-        assertEquals("https://img/cover.jpg", state.getCoverImage());
-        assertEquals(2, state.getImages().size());
-        assertEquals("PEXELS", state.getImages().get(0).getMethod());
-        assertEquals("PICSUM", state.getImages().get(1).getMethod());
-        assertEquals("https://img/fallback.jpg", state.getImages().get(1).getUrl());
+        assertEquals("https://cos/ai.svg", state.getCoverImage());
+        assertEquals("AI_GENERATE", state.getImages().get(0).getMethod());
+        assertEquals("PEXELS", state.getImages().get(1).getMethod());
+        assertEquals("https://img/pexels-fallback.jpg", state.getImages().get(1).getUrl());
 
         InOrder order = inOrder(imageSearchService, streamHandler);
-        order.verify(imageSearchService).searchImage(request(1, "cover", "", "PEXELS", "future office", null));
+        order.verify(imageSearchService).searchImage(request(1, "cover", "", "AI_GENERATE", "future office", "主题信息图"));
         order.verify(streamHandler).accept(SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix()
                 + GsonUtils.toJson(state.getImages().get(0)));
         order.verify(imageSearchService).searchImage(request(2, "section", "第一章", "MERMAID", "pipeline",
                 "flowchart LR\n  A --> B"));
-        order.verify(imageSearchService).getFallbackImageUrl(2);
+        order.verify(imageSearchService).searchImage(request(2, "section", "第一章", "PEXELS", "pipeline",
+                "flowchart LR\n  A --> B"));
         order.verify(streamHandler).accept(SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix()
                 + GsonUtils.toJson(state.getImages().get(1)));
     }
 
     @Test
-    void generate_usesFallbackWhenSearchThrows() {
+    void generate_usesStaticFallbackWhenPexelsAlsoFails() {
         ArticleState state = new ArticleState();
-        state.setImageRequirements(List.of(requirement(1, "cover", "", null, "broken", null)));
-        when(imageSearchService.searchImage(request(1, "cover", "", "PEXELS", "broken", null)))
-                .thenThrow(new RuntimeException("图库不可用"));
+        state.setImageRequirements(List.of(requirement(1, "cover", "", "AI_GENERATE", "broken", "说明")));
+        when(imageSearchService.searchImage(request(1, "cover", "", "AI_GENERATE", "broken", "说明")))
+                .thenThrow(new RuntimeException("模型不可用"));
+        when(imageSearchService.searchImage(request(1, "cover", "", "PEXELS", "broken", "说明")))
+                .thenReturn(null);
+        when(imageCloudStore.toPublicUrl(any())).thenReturn(null);
         when(imageSearchService.getFallbackImageUrl(1)).thenReturn("https://img/fallback.jpg");
 
         imageAgent.generate(state, streamHandler);
 
         assertEquals("https://img/fallback.jpg", state.getCoverImage());
-        assertEquals("PICSUM", state.getImages().get(0).getMethod());
+        assertEquals("PEXELS", state.getImages().get(0).getMethod());
         verify(streamHandler).accept(SseMessageTypeEnum.IMAGE_COMPLETE.getStreamingPrefix()
                 + GsonUtils.toJson(state.getImages().get(0)));
     }
@@ -109,7 +116,7 @@ class ImageAgentTest {
     @Test
     void generate_rejectsNullStreamHandler() {
         ArticleState state = new ArticleState();
-        state.setImageRequirements(List.of(requirement(1, "cover", "", "PEXELS", "cover", null)));
+        state.setImageRequirements(List.of(requirement(1, "cover", "", "AI_GENERATE", "cover", "主题")));
         assertThrows(BusinessException.class, () -> imageAgent.generate(state, null));
     }
 

@@ -48,7 +48,7 @@ class SvgDiagramServiceTest {
         assertEquals("svg-diagram", payload.getKeyPrefix());
         String decoded = new String(Base64.getDecoder().decode(payload.getContent()), StandardCharsets.UTF_8);
         assertTrue(decoded.contains("<svg"));
-        assertEquals("SVG_DIAGRAM", service.getSearchMethod());
+        assertEquals("AI_GENERATE", service.getSearchMethod());
     }
 
     @Test
